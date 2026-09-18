@@ -27,6 +27,7 @@ of plain-English summary, and STOP. Do not code, do not summarize instead of sho
 | `latest`, `most recent`, `last time we talked about X` | `search "X" --kind all --newest` |
 | `since <date>`, `last week` | add `--since YYYY-MM-DD` to whichever search above |
 | `in August`, `on Sept 5`, `before <date>`, `between A and B` | add `--on YYYY-MM`, `--on YYYY-MM-DD`, `--until D`, or `--since A --until B` |
+| `that is wrong`, `strike that`, `I never said that`, `that never happened` (about a statement just shown) | `strike <id> --reason "<what the owner said was wrong>"`, then show the line it prints. `strike <id> --undo` brings it back |
 | `yesterday's brief`, `what happened yesterday`, `catch me up` | `brief` |
 | `we are done for the day`, `wrap up`, `end of day` | write the project handoff, then `ingest`, then `distill --today`, report the counts |
 
@@ -66,6 +67,10 @@ second look. `map_section` hits are the project maps: what the map SAYS, beside 
    The record only goes back as far as the transcripts on disk; when the earliest hit is later
    than the thing asked about, say the record starts after it rather than presenting that hit as
    the beginning.
+
+8. Only the owner strikes a statement. When a distilled statement contradicts what the owner
+   actually said (the local model mislabels sometimes), show both, say which looks wrong, and ask;
+   never run `strike` on your own judgement.
 
 ## `distill` needs an AI model; everything else does not
 

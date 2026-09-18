@@ -337,6 +337,15 @@ approval, from a later session, over something rejected; a standing rule over a 
 Why a judge: on the first real store, likeness plus an approved/rejected flip drew 14 links and 13
 were wrong. With the judge and the same-session guard the same store draws none, which is correct.
 
+### `strike <id> --reason "..."` and `strike <id> --undo`
+
+The owner's correction of a statement the model got wrong (a 14B model will now and then read
+"what?" as a refusal). The statement leaves every search and the brief, stays in the store with
+the date and the reason, prints `STRUCK as wrong by the owner` under `--include-superseded`, and is
+never revived by anything automatic: the same statement derived again has the same sha, so it is
+ignored. `--undo` puts it back in force. Only statements can be struck; turns, notes and maps are
+the record itself, not a model's reading of it.
+
 ### `mcp [--root DIR]`
 
 Serves `search` and `brief` to Claude as Model Context Protocol tools (`recall_search`,
@@ -498,7 +507,7 @@ rounds got it there from 11 of 15; the record is in `docs/superpowers/plans/`.
 ## Development
 
 ```bash
-npm test                       # node --test, 43 tests, no GPU or network needed
+npm test                       # node --test, 44 tests, no GPU or network needed
 node scripts/eval-prompt.js    # prompt eval, needs a model
 ```
 

@@ -110,6 +110,28 @@ test('supersession links: likeness nominates, the judge decides once, and two ap
   other.close();
 });
 
+test('strike: a statement the owner calls wrong leaves search, stays on record, survives a re-derive, and can come back', () => {
+  const { cfg } = project();
+  const store = openStore(cfg.store);
+  const wrong = stmt(store, 1, '2026-09-01T10:00:00.000Z', 'owner', 'rejected', 'Owner rejected restarting the history');
+  const find = (o) => search.runSearch(store, cfg, { query: 'history', ...o }).distilled;
+  assert.equal(find().length, 1);
+  assert.equal(store.strike(wrong, 'the owner said yes, not no').status, 'struck');
+  assert.equal(find().length, 0, 'gone from the default search');
+  const kept = find({ includeSuperseded: true });
+  assert.equal(kept.length, 1, 'still on record');
+  assert.match(search.format({ distilled: kept, raw: [], deepBlocks: [] }, { query: 'history' }), /STRUCK as wrong by the owner/);
+  assert.match(kept[0].body, /struck \d{4}-\d{2}-\d{2}: the owner said yes, not no/);
+  assert.equal(stmt(store, 1, '2026-09-01T10:00:00.000Z', 'owner', 'rejected', 'Owner rejected restarting the history'), wrong, 'the same statement derived again is the same row');
+  store.dedupeStatements();
+  assert.equal(find().length, 0, 'and nothing automatic revives it');
+  assert.equal(store.strike(999999, 'x'), null, 'only a real statement can be struck');
+  assert.equal(store.unstrike(wrong).status, 'active');
+  assert.equal(find().length, 1);
+  assert.doesNotMatch(find()[0].body, /struck /);
+  store.close();
+});
+
 test('mcp: initialize, list, a search that opens the gate, a bad date refused, an unknown method refused', async () => {
   const { root, cfg } = project();
   const store = openStore(cfg.store);

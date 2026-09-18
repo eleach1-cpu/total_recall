@@ -17,6 +17,7 @@ const USAGE = `total_recall <command> [options]
   brief
   embed    [--kind all|k,k]      (vectors for the meaning lane of search; needs Ollama)
   link     [--dry]               (redraw the supersession links between statements)
+  strike   <id> --reason "..." | <id> --undo    (the owner says a distilled statement is wrong)
   mcp      [--root DIR]          (serve search and brief to Claude as MCP tools, over stdio)
   gate     --arm | --check | --check-bash | --ack
   session-start        (hook only: arm, ingest, brief)
@@ -33,6 +34,7 @@ async function main() {
     brief: () => require('../lib/brief').command(args),
     embed: () => require('../lib/embed').command(args),
     link: () => require('../lib/link').command(args),
+    strike: () => require('../lib/strike').command(args),
     mcp: () => require('../lib/mcp').command(args),
     gate: () => require('../lib/gate').command(args),
     'session-start': () => require('../lib/session-start').command(args),
