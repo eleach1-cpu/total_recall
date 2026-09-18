@@ -1,0 +1,27 @@
+You are reading a slice of a work session between a software OWNER and CLAUDE, an AI assistant that does the coding. Each turn is labelled [T<id>] owner: or [T<id>] claude:. Extract the statements worth remembering in a later session and label each with what happened to it.
+
+Labels, exactly one per item:
+- approved: the OWNER says yes, picks an option, gives an instruction, or authorizes work. Examples: "do it", "approved", "commit and push", "A, and call it X", "fix it", "go". An owner instruction is always approved, never completed. Only owner turns can be approved: CLAUDE saying "Agreed" or "Understood" approves nothing; if that same claude turn reports finished work it is completed, otherwise it is not an item.
+- rejected: the OWNER turns down an option, approach, claim or wording, or tells CLAUDE to stop saying or suggesting something. For reason, copy the justification the owner gives in that same turn (a because-clause, or the fact cited against the idea, such as a measurement); null only when the turn gives none.
+- standing: the OWNER states a rule for all future work: "never", "always", "from now on", "do not ... again", "every time", "only in". Only owner turns can be standing. When one owner turn both refuses something and sets a rule, output TWO items citing that same turn: one rejected, one standing.
+- completed: CLAUDE reports work actually finished: shipped, pushed, fixed, reverted, renamed, done, tests passing. Never an owner instruction, never a line about work still in progress, never an answer to a question. A claude turn that agrees AND reports the work done ("Agreed. Renamed X to Y.") is completed.
+- open: a task someone explicitly postpones or hands to a later session ("leave it for tomorrow", "still needs a test", "never got done, next time"). A question is not open. A progress report ("14 done so far", "running") is not open and not an item.
+- proposed: CLAUDE offers an option or plan that the OWNER does not answer anywhere in this slice. If the owner answers it, output only the owner's answer (approved or rejected).
+- superseded: a decision in this slice replaced by a later decision in this slice.
+
+Never output: questions (anything asking for information, ending in ? or not), answers to questions that report no finished work, acknowledgements ("Noted", "Understood", "OK"), progress or status reports (counts, "so far", "running", "in progress"), greetings, shell or tool output, code, logs.
+
+Each item's "turn" is the T number of the turn its "quote" was copied from, and the quote must appear word for word in that turn. Several items may cite the same turn.
+
+Worked example. Slice:
+[T1] owner: the tile count is wrong, fix it
+[T2] claude: I can hardcode 291 or derive it from the records. I suggest deriving it.
+[T3] owner: derive it, and never hardcode a count on that page again
+[T4] claude: Done, the count is derived; pushed as a1b2c3.
+[T5] owner: how many of the pages are done so far?
+[T6] claude: About half, the rest are running now.
+Answer:
+{"items":[{"turn":1,"outcome":"approved","statement":"Owner asked for the wrong tile count to be fixed","quote":"the tile count is wrong, fix it","reason":null},{"turn":3,"outcome":"approved","statement":"Owner chose deriving the count from the records over hardcoding","quote":"derive it","reason":null},{"turn":3,"outcome":"standing","statement":"Never hardcode a count on the tools page","quote":"never hardcode a count on that page again","reason":null},{"turn":4,"outcome":"completed","statement":"The count is now derived and pushed as a1b2c3","quote":"Done, the count is derived; pushed as a1b2c3.","reason":null}]}
+
+Answer with ONE JSON object in exactly that shape and nothing else. If nothing in the slice is worth remembering, answer exactly {"none":true}.
+The slice:

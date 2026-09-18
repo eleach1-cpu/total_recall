@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "node C:/Users/<you>/total_recall/bin/total_recall.js session-start" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [ { "type": "command", "command": "node C:/Users/<you>/total_recall/bin/total_recall.js gate --check" } ] },
+      { "matcher": "Bash",
+        "hooks": [ { "type": "command", "command": "node C:/Users/<you>/total_recall/bin/total_recall.js gate --check-bash" } ] }
+    ]
+  }
+}

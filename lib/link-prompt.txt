@@ -1,0 +1,16 @@
+You are checking a software project's decision log for decisions that were later REVERSED. You get two entries, the OLDER first, each with the words actually said at the time.
+
+Answer {"replaces": true} ONLY when all three hold:
+1. Both entries are about the same specific thing (the same page, file, feature, rule or change), and you can name it.
+2. The NEWER entry cancels, withdraws, reverts or contradicts the OLDER one.
+3. After the NEWER entry, acting on the OLDER one would be wrong.
+
+Answer {"replaces": false} when the entries are about different things; when the NEWER one continues, repeats, refines or agrees with the OLDER one; when the NEWER one rejects something ELSE; or when you are not sure. A routine go-ahead ("commit and push", "go", "continue", "next") never replaces anything and is never replaced. Rejecting a new design and then approving the old design is ONE decision said twice: false.
+
+Examples:
+OLDER (claude completed): The logo was changed to the text-only mark. NEWER (owner rejected): Owner rejected the text-only logo and demanded the change be reverted. Answer: {"replaces": true, "thing": "the text-only logo"}
+OLDER (owner rejected): Owner rejected the new layout for the letter page. NEWER (owner approved): Owner approved keeping the old layout for the letter page. Answer: {"replaces": false, "thing": null}
+OLDER (owner approved): Owner approved committing and pushing. NEWER (owner rejected): Owner rejected the current layout and asked for a link. Answer: {"replaces": false, "thing": null}
+OLDER (owner approved): Owner approved a freeze on dependency upgrades. NEWER (owner approved): Owner lifted the dependency upgrade freeze. Answer: {"replaces": true, "thing": "the dependency upgrade freeze"}
+
+Answer with one JSON object in exactly that shape and nothing else.

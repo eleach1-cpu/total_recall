@@ -1,0 +1,78 @@
+{
+  "_": "Gold set for tuning the distill prompt. Every slice is invented: no real conversation is in this file. Each chunk is a slice of turns; gold lists the (turn, outcome) pairs the model must produce and forbid lists outcomes that must NOT appear anywhere in the chunk. A proposal that is answered inside the slice needs no proposed item: the answer carries it. who is derived from the turn role by the validator. Run: node scripts/eval-prompt.js [--prompt file] [--model tag]",
+  "chunks": [
+    {
+      "name": "A proposal, approval, completion",
+      "turns": [
+        { "role": "user", "body": "the invoice total looks off by one cent" },
+        { "role": "assistant", "body": "The rounding happens before the tax is added. I propose rounding after it instead." },
+        { "role": "user", "body": "approved, do it" },
+        { "role": "assistant", "body": "Done. Rounding now happens after the tax is added, tests pass 12 of 12." }
+      ],
+      "gold": [[3, "approved"], [4, "completed"]],
+      "forbid": ["standing", "rejected"]
+    },
+    {
+      "name": "B rejection with a standing rule, then completion",
+      "turns": [
+        { "role": "assistant", "body": "To cut the logo file from 139 KB to 8 KB I can switch to a text-only mark at the small sizes." },
+        { "role": "user", "body": "NO. I do not want the text-only version, revert it and accept the size. Never use that old mark again." },
+        { "role": "assistant", "body": "Reverted; the full logo is back at every size." }
+      ],
+      "gold": [[2, "rejected"], [2, "standing"], [3, "completed"]],
+      "forbid": []
+    },
+    {
+      "name": "C an instruction is approval, a status line is not standing",
+      "turns": [
+        { "role": "user", "body": "commit and push" },
+        { "role": "assistant", "body": "Gate marker cleared again; re-acked, committing now." },
+        { "role": "assistant", "body": "Pushed: a1b2c3d4 to main, deploy running." }
+      ],
+      "gold": [[1, "approved"], [3, "completed"]],
+      "forbid": ["standing", "rejected", "open"]
+    },
+    {
+      "name": "D open item, and a rejection with its stated reason",
+      "turns": [
+        { "role": "user", "body": "the pricing article's source re-check never got done, leave it for tomorrow" },
+        { "role": "assistant", "body": "Noted, it stays open." },
+        { "role": "user", "body": "and stop saying it is slow because of the cache, clearing the cache does not solve the problem, the full page still takes 10 to 20 seconds to load" }
+      ],
+      "gold": [[1, "open"], [3, "rejected"]],
+      "forbid": ["completed", "approved"],
+      "reasonOn": 3
+    },
+    {
+      "name": "E shell log is noise",
+      "turns": [
+        { "role": "user", "body": "user@server:~$ sudo apt update && sudo apt install -y build-essential git tmux htop\nHit:1 http://archive.ubuntu.com/ubuntu noble InRelease\nReading package lists... Done\nBuilding dependency tree... Done\n0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\nuser@server:~$ nvidia-smi\n| NVIDIA-SMI 550.54 | Driver 550.54 | CUDA 12.4 |" },
+        { "role": "assistant", "body": "All six steps worked, the driver is held and nvtop is installed." }
+      ],
+      "gold": [],
+      "forbid": ["standing", "rejected", "approved", "open", "proposed"]
+    },
+    {
+      "name": "F naming approved, then the extract name rejected, then renamed",
+      "turns": [
+        { "role": "user", "body": "A, and call the tool notebook" },
+        { "role": "assistant", "body": "notebook it is. Next: the extract command sends raw turns to the local model." },
+        { "role": "user", "body": "I am not sure about extract, maybe a different name that shows it goes to a model for a summary" },
+        { "role": "assistant", "body": "Agreed. Renamed extract to distill." }
+      ],
+      "gold": [[1, "approved"], [3, "rejected"], [4, "completed"]],
+      "forbid": ["standing"]
+    },
+    {
+      "name": "G a standing rule stated calmly, and a question that is not a decision",
+      "turns": [
+        { "role": "user", "body": "from now on, every session handoff goes only in notes/handoffs, nowhere else" },
+        { "role": "assistant", "body": "Understood." },
+        { "role": "user", "body": "how much is left to process?" },
+        { "role": "assistant", "body": "Nine sessions, about 32 chunks; 14 done so far." }
+      ],
+      "gold": [[1, "standing"]],
+      "forbid": ["rejected", "completed", "open"]
+    }
+  ]
+}
