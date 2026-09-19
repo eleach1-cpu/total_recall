@@ -1,7 +1,7 @@
 {
   "name": "total_recall",
   "version": "0.1.0",
-  "description": "Searchable, distilled memory of Claude Code sessions: FTS5 store, local-LLM distillation, session brief and edit gate.",
+  "description": "Session-to-session memory for Codex and Claude Code: recall conversations, decisions and project context with local or optional Voyage meaning search.",
   "license": "MIT",
   "bin": {
     "total_recall": "bin/total_recall.js"

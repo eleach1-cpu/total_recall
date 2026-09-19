@@ -14,7 +14,7 @@ approach, or send it searching for a source it already found with you last month
 
 [Get started](docs/SETUP.md) · [Using Recall](docs/RETRIEVAL.md) · [Codex integration](docs/CODEX.md)
 
-> **Current version:** includes Recall and the expanded search, date, project and source-reading
+> **Early access (v0.1.0):** includes Recall and the expanded search, date, project and source-reading
 > tools, tested against imported conversation history. Existing users should update their local
 > checkout, installed skills and MCP configuration, then reconnect their AI client.
 
@@ -229,6 +229,10 @@ recall results out of public repositories.
   is history, not fresh permission to spend, publish or deploy.
 
 ## For contributors
+
+This is an early-access release. Keep backups of your local memory database and review
+updates before applying them. Please use synthetic examples in bug reports, not your real
+conversations, credentials or database. For sensitive findings, see the [security policy](SECURITY.md).
 
 Run `npm test` from this repository. The tests use synthetic records and stubbed providers;
 they do not require a GPU or paid API. Prompt evaluations are separate model-calling jobs.

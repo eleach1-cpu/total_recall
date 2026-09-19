@@ -3,3 +3,34 @@ node_modules/
 *.sqlite-wal
 *.sqlite-shm
 .DS_Store
+
+# Credentials and machine-specific project configuration. Examples must be sanitized.
+.env
+.env.*
+!.env.example
+!.env.*.example
+total_recall.json
+total_recall.local.json
+.mcp.json
+.claude/settings.local.json
+*.pem
+*.key
+
+# Private conversation exports, local stores, backups and recall output.
+*.jsonl
+*.ndjson
+*.db
+*.db-wal
+*.db-shm
+*.sqlite-journal
+.total_recall/
+transcripts/
+conversation-exports/
+recall-exports/
+backups/
+*.sqlite.bak
+*.db.bak
+
+# Only explicitly named, reviewed synthetic/example exports are eligible for tracking.
+!tests/fixtures/*.example.jsonl
+!tests/fixtures/*.example.ndjson
