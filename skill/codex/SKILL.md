@@ -58,6 +58,10 @@ some conversation's beginning is not on record, so an "earliest" hit may not be 
    or Codex's own session files by hand. If the tool cannot answer, say so in one line.
 6. At end of day, when the owner says so: write the project's Codex session handoff first, then the
    owner (or Claude) runs `total_recall ingest` and `total_recall distill --today`.
+   The handoff carries a `## Recall ledger` section, three lines, so this tool is measured and not
+   assumed useful: (1) searches run, own initiative versus owner asked; (2) hits that CHANGED the
+   work, each with its `#id` and one sentence on what would have been done without it (a hit that
+   only confirmed the plan counts as zero; write `none`); (3) hits that were wrong or noise, by `#id`.
 
 Without the MCP tools, the same searches run as
 `node <total_recall>/bin/total_recall.js search "<query>" [--kind all] [--who owner] [--client codex] [--deep]`.

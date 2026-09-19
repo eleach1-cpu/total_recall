@@ -58,6 +58,10 @@ second look. `map_section` hits are the project maps: what the map SAYS, beside 
    initiative under rule 1.
 4. When the owner says the day is done (any wording): write the project's session handoff first,
    then run `ingest`, then `distill --today`, and report the counts it prints.
+   The handoff carries a `## Recall ledger` section, three lines, so this tool is measured and not
+   assumed useful: (1) searches run, own initiative versus owner asked; (2) hits that CHANGED the
+   work, each with its `#id` and one sentence on what would have been done without it (a hit that
+   only confirmed the plan counts as zero; write `none`); (3) hits that were wrong or noise, by `#id`.
 5. Before a compaction, ask in one line whether to distill first. Otherwise never run `distill`
    unasked: it costs GPU time or API money the owner may not want spent.
 6. `--outcome standing` lists every owner rule still in force. `--outcome rejected --since <date>`
