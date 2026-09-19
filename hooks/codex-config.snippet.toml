@@ -1,0 +1,9 @@
+# Merge into <repo>/.codex/config.toml (project scope; Codex asks you to trust the project).
+# Not into ~/.codex/config.toml: a server pinned to one project would be searchable from every other.
+# Keep every other [mcp_servers.*] table and setting you already have.
+
+[mcp_servers.total_recall]
+command = 'C:\Program Files\nodejs\node.exe'
+args = ['C:\Users\<you>\total_recall\bin\total_recall.js', 'mcp', '--client', 'codex', '--root', 'C:\path\to\project']
+enabled_tools = ['recall_search', 'recall_brief']
+startup_timeout_sec = 15

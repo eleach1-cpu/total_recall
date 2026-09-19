@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup|resume|clear|compact",
+        "hooks": [ { "type": "command", "timeout": 30,
+          "command": "node /path/to/total_recall/bin/total_recall.js codex-hook",
+          "commandWindows": "node C:/Users/<you>/total_recall/bin/total_recall.js codex-hook" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "apply_patch|Bash",
+        "hooks": [ { "type": "command", "timeout": 10,
+          "command": "node /path/to/total_recall/bin/total_recall.js codex-hook",
+          "commandWindows": "node C:/Users/<you>/total_recall/bin/total_recall.js codex-hook" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "mcp__total_recall__recall_search",
+        "hooks": [ { "type": "command", "timeout": 10,
+          "command": "node /path/to/total_recall/bin/total_recall.js codex-hook",
+          "commandWindows": "node C:/Users/<you>/total_recall/bin/total_recall.js codex-hook" } ] }
+    ]
+  }
+}

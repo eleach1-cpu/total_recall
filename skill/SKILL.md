@@ -72,9 +72,12 @@ second look. `map_section` hits are the project maps: what the map SAYS, beside 
    actually said (the local model mislabels sometimes), show both, say which looks wrong, and ask;
    never run `strike` on your own judgement.
 
-## `distill` needs an AI model; everything else does not
+## `distill` needs an AI language model; nothing else can cost money
 
-`distill` is the one command that calls a language model. It reads raw turns and writes the
+`distill` is the one command that calls a language model on the conversation. (`search` asks the
+local embedding model for one query vector, `link` asks the distill model to judge a few pairs,
+and `distill` runs both when it finishes; all local and free unless the provider is `claude`.)
+`distill` reads raw turns and writes the
 `statement` rows (who, outcome, quote, evidence). It runs through ONE of:
 
 - **Ollama**, local and free (`distill.provider: "ollama"`, default; the model tag in

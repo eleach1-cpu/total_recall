@@ -1,6 +1,8 @@
 # total_recall
 
-Searchable, distilled memory for Claude Code sessions.
+Searchable, distilled memory for Claude Code sessions, and (since schema version 2) for Codex
+sessions on the same project: one shared record, every row labelled with who said it and in which
+client. Codex setup, what is read and what never is: [docs/CODEX.md](docs/CODEX.md).
 
 Every Claude Code session starts blank. What the last session decided, rejected or left half-done
 survives only if someone wrote it down, and even then the new session has to know which file to
@@ -346,11 +348,16 @@ never revived by anything automatic: the same statement derived again has the sa
 ignored. `--undo` puts it back in force. Only statements can be struck; turns, notes and maps are
 the record itself, not a model's reading of it.
 
-### `mcp [--root DIR]`
+### `mcp [--root DIR] [--client codex]`
 
-Serves `search` and `brief` to Claude as Model Context Protocol tools (`recall_search`,
-`recall_brief`) over stdio, so Claude calls them as tools instead of shell commands. Read-only:
-`ingest`, `distill`, `embed` and `link` stay on the command line because they cost time or money.
+Serves `search` and `brief` as Model Context Protocol tools (`recall_search`, `recall_brief`) over
+stdio, so an assistant calls them as tools instead of shell commands. The tools never ingest,
+distill, strike or change what is remembered; `ingest`, `distill`, `embed` and `link` stay on the
+command line because they cost time or money. Not side-effect free: a search may ask the local
+embedding model for one query vector, and under Claude Code a successful search records that the
+session has looked. Each result also carries `structuredContent.total_recall = { tool, ok, project,
+hits }`, which is what a hook reads to know a search really happened. `--client codex` is for a
+server Codex starts: it never takes a caller from its own environment (see docs/CODEX.md).
 Register it in the project's `.mcp.json`:
 
 ```json
@@ -369,7 +376,28 @@ for this session by hand, for the rare session with nothing to recall. Exit 2 me
 
 ### `session-start`
 
-Hook only. `gate --arm`, then `ingest` (new only), then `brief`, in one process.
+Hook only. `gate --arm`, then `ingest` (new only), then `brief`, in one process. The ingest is
+bounded (`ingest.startupBudgetMs`, 2 seconds): what does not fit waits at its checkpoint, the brief
+says more is waiting, and `total_recall ingest` catches up. No model is ever called from here.
+
+### `migrate`
+
+The owner's step when a new version changes the store's schema. Writes a complete copy of the
+store first (`VACUUM INTO`, under `backups/` beside the store; a plain file copy of a live WAL
+database is not a complete backup), then upgrades in place. Additive: no row id, FTS entry, vector,
+strike, link or run record moves. Until it has run, every other command refuses an older store
+with the sentence to run it; nothing upgrades a store as a side effect of a search or a hook. A
+store NEWER than the program is refused outright. Roll back by copying the backup over the store.
+
+### `codex-hook`
+
+Hook only, for Codex: one command for `SessionStart`, `PreToolUse` and `PostToolUse`. See
+[docs/CODEX.md](docs/CODEX.md).
+
+### `--root DIR` (any command)
+
+Work on the project at `DIR` instead of the current directory. Inside a linked git worktree the
+MAIN checkout's `total_recall.json` is used, so temporary worktrees share the project's one store.
 
 ## Configuration reference
 
@@ -417,6 +445,15 @@ Hook only. `gate --arm`, then `ingest` (new only), then `brief`, in one process.
 | `embed.queryTimeoutMs` | `6000` | How long a search waits for the query's vector before it falls back to words and says so. |
 | `link.minSim` / `.minOverlap` | `0.8` / `0.3` | How alike two statements must be (by vector, or by shared title words when either has no vector) to be NOMINATED for the judge. |
 | `store` | `~/.total_recall/<project>.sqlite` | Store file. |
+| `transcriptSources` | none | Instead of `transcripts`: a list of `{ "client": "claude"\|"codex", "path": DIR, "recursive": bool }`. `transcripts` alone still means one Claude folder; giving both is refused. `client` is who HELD the conversation; `distill.provider` is the model that READS it. |
+| `sources.*` | none | Each note source is one glob or a list of globs (a Claude handoff pattern beside a Codex one); a file two patterns match is read once. |
+| `projectRoots` | the config's folder | Folders that ARE this project. A Codex session belongs here when its recorded working directory is one of them, inside one, or a live git worktree of one. |
+| `projectRepos` | none | Git remote URLs of this project. A Codex session that recorded one of them belongs here even if its worktree folder is gone. |
+| `historicalRoots` | none | Folders that USED to be this project's worktrees; `*` stands for one path segment. |
+| `includeSessions` | none | Codex thread ids the owner chooses to include although nothing else binds them. |
+| `brief.maxChars` | `8000` | Size cap on the brief, about 2,000 tokens; the brief is injected into a session's context. |
+| `ingest.maxLineMB` | `16` | A single JSONL record larger than this is streamed past, never buffered, and counted. |
+| `ingest.startupBudgetMs` | `2000` | How long a session-start hook may spend ingesting. |
 
 Environment: `CLAUDE_CODE_SESSION_ID` (set by Claude Code in its shell; used for the gate),
 `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` (the `claude` provider), `TOTAL_RECALL_HOME`
@@ -424,7 +461,12 @@ Environment: `CLAUDE_CODE_SESSION_ID` (set by Claude Code in its shell; used for
 
 ## The distill step: with and without an AI model
 
-`distill` is the only command that needs a model. Two providers:
+`distill` is the only command that needs a LANGUAGE model, and the only one that can cost money.
+Two more things call a model, both local and free by default: `search` asks the embedding model
+for one query vector (it falls back to words, and says so, when Ollama does not answer), and `link`
+asks the distill model to judge nominated pairs (through the `claude` provider that is paid).
+`distill` runs `embed` and then `link` when it finishes, bounded to what that run produced and
+counted in its summary line. Two providers:
 
 **Ollama (default, local, free).** Install Ollama, `ollama pull qwen3:14b` (or another tag, set in
 `ollama.model`), keep it running. On an RTX 5070 Ti (16 GB) the 14B model at Q4 handles a 6K-token

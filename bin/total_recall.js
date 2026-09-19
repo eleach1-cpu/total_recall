@@ -11,22 +11,28 @@ const USAGE = `total_recall <command> [options]
 
   ingest   [--all | --since D | --from D --to D | --session ID]
   distill  [--all | --since D | --from D --to D | --session ID | --today] [--model TAG]
-  search   "<query>" [--kind k,k] [--who owner|claude] [--outcome o,o] [--files GLOB]
+  search   "<query>" [--kind k,k] [--who owner|claude|codex|assistant] [--client claude|codex|all]
+           [--outcome o,o] [--files GLOB]
            [--session ID] [--since D] [--until D] [--on D] [--oldest | --newest] [--tools] [--words]
            [--deep] [--limit N] [--include-superseded]      (D = YYYY-MM-DD, YYYY-MM or YYYY)
   brief
   embed    [--kind all|k,k]      (vectors for the meaning lane of search; needs Ollama)
   link     [--dry]               (redraw the supersession links between statements)
   strike   <id> --reason "..." | <id> --undo    (the owner says a distilled statement is wrong)
-  mcp      [--root DIR]          (serve search and brief to Claude as MCP tools, over stdio)
+  mcp      [--root DIR] [--client codex]   (serve search and brief as MCP tools, over stdio)
+  migrate                        (owner step: back the store up, then upgrade it to this version's schema)
+  codex-hook                     (hook only, Codex: SessionStart, PreToolUse, PostToolUse on one command)
   gate     --arm | --check | --check-bash | --ack
   session-start        (hook only: arm, ingest, brief)
+  --root DIR           (any command: work on the project at DIR instead of the current directory)
   --help
 `;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.cmd || args.flags.help) { process.stdout.write(USAGE); return 0; }
+  // One override for every command, the same resolver the MCP server and the hooks use.
+  if (typeof args.flags.root === 'string' && args.cmd !== 'mcp') process.env.TOTAL_RECALL_ROOT = args.flags.root;
   const commands = {
     ingest: () => require('../lib/ingest').command(args),
     distill: () => require('../lib/distill').command(args),
@@ -36,6 +42,8 @@ async function main() {
     link: () => require('../lib/link').command(args),
     strike: () => require('../lib/strike').command(args),
     mcp: () => require('../lib/mcp').command(args),
+    migrate: () => require('../lib/migrate').command(args),
+    'codex-hook': () => require('../lib/codex-hook').command(args),
     gate: () => require('../lib/gate').command(args),
     'session-start': () => require('../lib/session-start').command(args),
   };

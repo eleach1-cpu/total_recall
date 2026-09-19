@@ -18,7 +18,8 @@ test('walks up to find total_recall.json and applies defaults', () => {
   const cfg = loadConfig(nested);
   assert.equal(cfg.project, 'demo');
   assert.equal(cfg.transcripts, path.join(root, 'transcripts'));
-  assert.equal(cfg.sources.handoff, path.join(root, 'notes', 'HANDOFF-*.md'));
+  // A note source is one pattern or several now that two clients write handoffs: always a list.
+  assert.deepEqual(cfg.sources.handoff, [path.join(root, 'notes', 'HANDOFF-*.md')]);
   assert.equal(cfg.ollama.model, 'qwen3:14b');
   assert.equal(cfg.ollama.chunkTokens, 6000);
   assert.equal(cfg.brief.standingLines, 15);
