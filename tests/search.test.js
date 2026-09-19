@@ -53,7 +53,9 @@ test('--deep follows evidence to the turn and its neighbours; --files and --kind
   assert.equal(ids.length, 3);
   const out = search.format(r, { query: 'invoice', deep: true });
   assert.match(out, /owner standing/);
-  assert.match(out, /quote: "Never ship/);
+  // The words are the record and the sentence is a reading of them: shown as two different things.
+  assert.match(out, /owner said: "Never ship/);
+  assert.match(out, /reading: /);
   const rawOut = search.format(search.runSearch(store, cfg, { query: 'invoice', kinds: ['turn'] }), { query: 'invoice' });
   assert.match(rawOut, /#\d+ turn \S+ \S+ \[owner\]/, 'raw hits name the speaker');
   assert.match(rawOut, /\[claude\]/);

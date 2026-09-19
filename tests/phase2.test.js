@@ -94,7 +94,8 @@ test('supersession links: likeness nominates, the judge decides once, and two ap
   assert.deepEqual(r.links.map((l) => [l.old.id, l.neu.id]), [[old, rej], [sup, nxt]]);
   assert.equal(store.getDoc(ap1).superseded_by, null, 'two approvals of similar things are two decisions');
   const out = search.format(search.runSearch(store, cfg, { query: 'logo mark' }), { query: 'logo mark' });
-  assert.match(out, new RegExp(`#${old} statement \\S+ s1 \\[claude completed\\] STRUCK by #${rej}`));
+  assert.match(out, new RegExp(`#${old} statement \\S+ s1 \\[claude completed\\].* REPLACED by #${rej}`)); // only the owner STRIKES; a later decision REPLACES
+  assert.match(out, /an assistant's report, not verified/);
   const again = await link.run(cfg, store, { judge });
   assert.equal(again.linked, 2, 'redrawing is idempotent');
   assert.equal(again.judged, 0, 'a pair is judged once, ever');
@@ -143,11 +144,11 @@ test('mcp: initialize, list, a search that opens the gate, a bad date refused, a
   assert.equal(init.result.protocolVersion, '2025-03-26');
   assert.deepEqual(init.result.capabilities, { tools: {} });
   assert.equal(await mcp.handle({ jsonrpc: '2.0', method: 'notifications/initialized' }, ctx), null, 'a notification is never answered');
-  assert.deepEqual((await rpc('tools/list')).result.tools.map((t) => t.name), ['recall_search', 'recall_brief']);
+  assert.deepEqual((await rpc('tools/list')).result.tools.map((t) => t.name), ['recall_search', 'recall_decide', 'recall_brief']);
   assert.equal(gate.isOpen('demo', 'sid-mcp'), false);
   const hit = await rpc('tools/call', { name: 'recall_search', arguments: { query: 'logo' } });
   assert.equal(hit.result.isError, false);
-  assert.match(hit.result.content[0].text, /\[owner standing\]\n {2}Never ship a text-only logo/);
+  assert.match(hit.result.content[0].text, /\[owner standing\].*\n {2}owner said: "Never ship a text-only logo"/);
   assert.equal(gate.isOpen('demo', 'sid-mcp'), true, 'a search through the server counts as the first look');
   const bad = await rpc('tools/call', { name: 'recall_search', arguments: { query: 'logo', since: 'last week' } });
   assert.equal(bad.result.isError, true);

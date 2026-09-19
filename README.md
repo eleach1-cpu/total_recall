@@ -245,6 +245,58 @@ matched as a phrase. Writes this session's gate marker.
 Output, one block per hit: `#<id> <kind> <date> <session-or-file> [<who> <outcome>]`, the title,
 `quote: "..."` and `reason: ...` for statements, a body snippet for notes.
 
+### `decide`, `decisions`, `unlink`: decisions recorded while the work happens
+
+The assistant that is IN the conversation records an owner decision when it is made, instead of a
+model mining it afterwards:
+
+```
+total_recall decide --client claude --outcome approved --what "Owner approved moving the rounding after the add" \
+    --scope "the invoice rounding" --quote "approved, do it" --context "I propose rounding after it"
+recorded #412: linked to T88, T89
+```
+
+- The owner's exact words are the record and are CHECKED against the ingested conversation. The
+  evidence is never typed in: it is the owner's turn the words were found in, plus the proposal that
+  turn answered. Until that turn is in the store the record is `pending` with no ids; every ingest
+  retries; if the conversation around that moment arrives and the words are not in it, the record
+  becomes `unverified` and never reaches a search or the brief.
+- `--what` and `--scope` are the assistant's READING and are printed as one (`owner said:` /
+  `reading:`). A matching quote proves the words were said, not that the reading is right.
+- Refused: a question as the quote, an approval that does not say what was approved, no scope. A
+  short "yes" / "go" needs the proposal before it. `standing` whose words do not themselves state a
+  general rule is held as UNCLEAR and never shown as a rule; `--unclear` does the same by hand.
+- `--replaces ID` links a replacement only when the new record is linked to the owner's real later
+  words and is clear; the earlier record stays, prints `REPLACED by #id`, and `unlink ID` undoes it.
+  Unclear, or `--conflicts-with ID`: both stay current and print `CONFLICT ... (owner to decide)`.
+  Only the owner strikes. The judged `link` pass never touches these.
+- `decisions [--today | --since D] [--pending] [--client c]` prints the block a handoff collects.
+  Recording the same decision twice is one record.
+- MCP: `recall_decide`, same fields. It never ingests; an unlinked record waits for the next ingest.
+
+### The owner-decision pass over the backlog (`distill --prompt decisions`)
+
+For conversations from before decisions were recorded in session. A strong reader goes over the
+ORIGINAL conversation (not over a weaker model's output), each slice preceded by the four turns
+before it so a short reply can be understood. Owner decisions only; each carries its scope, the
+proposal it answered and `certainty`; the same validator rules as `decide` apply to whatever the
+model claims (assistant turns, questions, short replies with no proposal, one-task "rules").
+
+```
+total_recall distill --all --prompt decisions --provider claude --model claude-sonnet-5 --dry --price-in <now>
+total_recall distill --session <id> --turns 123,456 --prompt decisions --provider claude --model claude-sonnet-5 \
+    --supersede-weaker --max-usd 2 --price-in <now> --price-out <now>
+```
+
+- A paid run REFUSES to start without `--max-usd` and the current `--price-in` / `--price-out`
+  (dollars per million tokens, looked up that day). It stops at the cap; a finished slice has a run
+  row (model + prompt) and is never sent again. `--dry` sends nothing and prints the workload.
+  `--turns` limits a run to the slices holding those turns (a trial).
+- `--supersede-weaker`: after a slice succeeds, what a weaker extractor said about those turns steps
+  aside (status `superseded`, still readable with `--include-superseded`, pointing at the new
+  statement on the same turn when there is one). A record made in session and anything the owner
+  struck are never overwritten and block a duplicate. No "replaced by" links are drawn by this pass.
+
 ### `brief`
 
 Prints what the session-start hook prints. Two parts with two caps: every active standing rule,
@@ -327,7 +379,7 @@ Date-ordered searches stay words-only. If Ollama does not answer, the search say
 ### `link [--dry] [--all] [--provider ollama|claude]`
 
 Redraws the supersession links between distilled statements: when a later decision replaces an
-earlier one, the earlier one stays visible but prints `STRUCK by #<id>`.
+earlier one, the earlier one stays visible but prints `REPLACED by #<id>` (only the owner strikes a statement; `STRUCK as wrong by the owner` is his).
 
 Likeness only nominates a pair; the distill model decides, shown the words actually said, once per
 pair per judge prompt (`lib/link-prompt.txt`), and the verdict is kept in `link_verdicts` and never

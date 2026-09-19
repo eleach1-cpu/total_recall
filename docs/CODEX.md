@@ -116,7 +116,7 @@ Project scope, in the repository's `.codex/config.toml` (Codex asks you to trust
 [mcp_servers.total_recall]
 command = 'C:\Program Files\nodejs\node.exe'
 args = ['C:\tools\total_recall\bin\total_recall.js', 'mcp', '--client', 'codex', '--root', 'C:\work\demo-project']
-enabled_tools = ['recall_search', 'recall_brief']
+enabled_tools = ['recall_search', 'recall_brief', 'recall_decide']
 ```
 
 Do not put a server pinned to one project's `--root` in the USER-level config: every other project

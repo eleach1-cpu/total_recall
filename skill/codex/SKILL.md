@@ -36,11 +36,57 @@ line of plain-English summary, and STOP. Do not edit project code after answerin
 
 Words in quotes are an exact phrase. If nothing fits, `query: "<the owner's words>", kind: "all"`.
 
-Reading a hit: `STRUCK by #N` means a later decision replaced it, so read #N first. `~meaning 0.71`
+Reading a hit: `REPLACED by #N` means the owner's later words replaced it, so read #N first; `CONFLICT with #N`
+means two of his instructions clash and he has not settled it: ask, do not pick. `recorded in session by ...`
+was written down when it was said; `extracted later by <model>` is a model's later reading; `an assistant's
+report, not verified` is exactly that; `UNCLEAR` stays unclear. `~meaning 0.71`
 matched by sense and shares none of the words. `[codex, reference]` or `[owner, reference]` is
 material kept for searching that was never treated as a decision. `(meaning lane off ...)` means
 the local embedding model did not answer and the hits are by words alone. `(coverage: ...)` means
 some conversation's beginning is not on record, so an "earliest" hit may not be the first.
+
+## Record the owner's decisions WHILE you work (do not wait for the handoff)
+
+When the owner CLEARLY approves something, rejects something, changes an earlier decision, or sets
+a rule, record it then, with the `recall_decide` tool (same fields as below, `client: "codex"`):
+
+    total_recall decide --client codex --outcome approved|rejected|standing|open
+        --what "<one sentence: what was decided>" --scope "<what it covers>"
+        --quote "<his exact words>" [--context "<a few exact words from the proposal he answered>"]
+        [--reason "..."] [--unclear] [--replaces ID | --conflicts-with ID]
+
+- His exact words are the record. Your sentence is a READING of them and is shown as one. The
+  conversation stays the authority; a matching quote proves the words were said, not that your
+  reading is right.
+- An "approved" must name WHAT was approved. For a short reply ("yes", "go", "do it") give
+  `--context` so the proposal he answered is linked beside his message. The tool cannot tell
+  which Codex task is calling, so ALWAYS give `context`: it is what picks the conversation. Words
+  said in several conversations with no context, or context that is not found before his words,
+  leave the record PENDING; it is never attached to a different proposal. Fix the words, do not guess.
+- Two instructions in one message ("make the header blue, make the footer green") are two
+  records, each quoting its own words.
+- An instruction for the task at hand is `approved`, never `standing`. `standing` is only for his
+  words that say always, never, from now on. The tool holds anything else as UNCLEAR.
+- Never record a question, a suggestion, your own proposal, your acknowledgement, or anything you
+  are inferring. If the meaning or the scope could be read two ways, pass `--unclear` and keep the
+  doubt. Ask him only when the ambiguity materially affects the work; never interrupt to confirm
+  the obvious.
+- Never type a turn id. PENDING means evidence is missing OR more than one exchange matches,
+  even within one conversation. Never pick the newest match. Read the reason: wait for missing
+  evidence, or supply more specific real context for ambiguity. Do not invent a conversation id.
+  UNVERIFIED means the words could not be linked after ingest; fix the quote or let it go.
+- `--replaces ID` requires a later direct owner message in this exact confirmation format:
+  `Replace decision #ID with: <the new instruction>`. Quote that complete message when recording
+  the confirmation. The tool checks the actual source message, target id, quoted instruction,
+  timing and decision kind; an approval never repeals a rule. Similar wording or your own
+  `clear` label is not confirmation. Without it, both stay current and replacement is a CONFLICT.
+  Ordinary decisions need no special wording. Ask for replacement confirmation only when it
+  materially affects the work; otherwise leave both and use `--conflicts-with ID`.
+  Read the `note:` line. Both exchanges remain on record; undo with `total_recall unlink ID`.
+  Never retire his instruction on your own say-so, and only he strikes a statement.
+- A recorded approval is history. It is never fresh permission to spend, publish or deploy.
+- The handoff COLLECTS these records: paste what `total_recall decisions --today` prints under a
+  `## Decisions` heading. Do not re-derive them and do not record them a second time.
 
 ## Rules for your own use
 
@@ -56,12 +102,17 @@ some conversation's beginning is not on record, so an "earliest" hit may not be 
    `claude` provider, money. `search` may ask the local embedding model for one vector; that is all.
 5. An owner question is answered by this tool's output, never by opening the store's SQLite file
    or Codex's own session files by hand. If the tool cannot answer, say so in one line.
-6. At end of day, when the owner says so: write the project's Codex session handoff first, then the
-   owner (or Claude) runs `total_recall ingest` and `total_recall distill --today`.
+6. At end of day, when the owner says so: write the project's Codex session handoff first (with the
+   `## Decisions` block from `total_recall decisions --today --client codex` and the Recall ledger), then
+   `total_recall ingest` (it links any pending decision) and `total_recall embed --kind all`. Routine
+   `distill` is retired for new work: decisions are recorded in session.
    The handoff carries a `## Recall ledger` section, three lines, so this tool is measured and not
    assumed useful: (1) searches run, own initiative versus owner asked; (2) hits that CHANGED the
    work, each with its `#id` and one sentence on what would have been done without it (a hit that
    only confirmed the plan counts as zero; write `none`); (3) hits that were wrong or noise, by `#id`.
+   Also, when they happened: (4) a recovered answer that was useful, (5) an explanation the owner
+   did not have to repeat, (6) a repeated mistake that was prevented, (7) a WRONG memory that
+   caused rework. "It confirmed my plan" is never "changed the work".
 
 Without the MCP tools, the same searches run as
 `node <total_recall>/bin/total_recall.js search "<query>" [--kind all] [--who owner] [--client codex] [--deep]`.

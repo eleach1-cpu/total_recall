@@ -11,11 +11,18 @@ const USAGE = `total_recall <command> [options]
 
   ingest   [--all | --since D | --from D --to D | --session ID]
   distill  [--all | --since D | --from D --to D | --session ID | --today] [--model TAG]
+           [--prompt decisions [--turns ID,ID] [--supersede-weaker] [--dry]]
+           [--provider claude --max-usd N --price-in N --price-out N [--effort low|medium|high]]
   search   "<query>" [--kind k,k] [--who owner|claude|codex|assistant] [--client claude|codex|all]
            [--outcome o,o] [--files GLOB]
            [--session ID] [--since D] [--until D] [--on D] [--oldest | --newest] [--tools] [--words]
            [--deep] [--limit N] [--include-superseded]      (D = YYYY-MM-DD, YYYY-MM or YYYY)
   brief
+  decide   --client claude|codex --outcome approved|rejected|standing|open --what "..." --scope "..."
+           --quote "<the owner's exact words>" [--context "<words from the proposal>"] [--reason "..."]
+           [--unclear] [--replaces ID | --conflicts-with ID]     (record one owner decision, in session)
+  decisions [--today | --since D] [--pending] [--client c]        (the block a handoff collects)
+  unlink   <id>                  (undo a recorded "replaces" or "conflict"; nothing else changes)
   embed    [--kind all|k,k]      (vectors for the meaning lane of search; needs Ollama)
   link     [--dry]               (redraw the supersession links between statements)
   strike   <id> --reason "..." | <id> --undo    (the owner says a distilled statement is wrong)
@@ -38,6 +45,9 @@ async function main() {
     distill: () => require('../lib/distill').command(args),
     search: () => require('../lib/search').command(args),
     brief: () => require('../lib/brief').command(args),
+    decide: () => require('../lib/decide').command(args),
+    decisions: () => require('../lib/decide').command(args),
+    unlink: () => require('../lib/decide').command(args),
     embed: () => require('../lib/embed').command(args),
     link: () => require('../lib/link').command(args),
     strike: () => require('../lib/strike').command(args),

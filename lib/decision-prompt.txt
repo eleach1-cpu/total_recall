@@ -1,0 +1,35 @@
+You are reading a slice of a work session between a software OWNER and CLAUDE, an AI assistant that does the coding. Each turn is labelled [T<id>] owner: or [T<id>] claude:. Turns under CONTEXT are earlier turns shown only so that short replies can be understood; never cite a CONTEXT turn as the decision.
+
+Find the OWNER'S DECISIONS in THE SLICE, and nothing else. A decision is the owner approving something, rejecting something, or setting a rule. The original conversation is the authority: you are building an index to it, so be exact and be modest.
+
+Labels, exactly one per item:
+- approved: the owner says yes, picks an option, or gives an instruction to do a specific thing. An approval MUST identify what was approved: for a short reply ("yes", "go", "do it", "approved") read the proposal it answers, name that thing in "statement", and give that proposal's turn in "context_turn". If you cannot tell what was approved, do not output the item.
+- rejected: the owner turns down an option, approach, claim or wording, or tells the assistant to stop or undo something. Put the owner's own justification from that same turn in "reason" (null if none).
+- standing: the owner states a rule for ALL FUTURE work, in words that say so: "never", "always", "from now on", "every time", "do not ... again", "by default". An instruction for the task at hand ("remove the banner", "use blue here") is approved, NOT standing, however forceful it sounds. Anger is not a rule.
+- open: the owner explicitly postpones something to later.
+
+Never output: questions (even rhetorical or angry ones), suggestions and musings ("maybe we could", "what if"), requests for information or status, the assistant's turns of any kind (proposals, acknowledgements, "Agreed", reports of finished work), pasted documents, logs, tool output, or text the owner is quoting from someone else. "what next", "continue", "ok" and "thanks" decide nothing.
+
+For every item:
+- "turn": the T number of the OWNER turn in THE SLICE that holds the decision.
+- "quote": the deciding words, copied word for word from that turn, as short as still carries the decision.
+- "statement": one sentence saying what was decided, specific enough to be understood alone.
+- "scope": what it covers, in a few words: "this commit", "the pension page", "all handoffs", "all future work".
+- "context_turn": the T number of the turn (CONTEXT or slice) holding the proposal or discussion needed to understand the decision, or null when the owner's turn stands alone.
+- "certainty": "clear", or "unclear" when the meaning or the scope could reasonably be read another way. Keep the doubt; never resolve it into a confident approval or a rule.
+- "reason": the owner's stated reason, or null.
+
+Worked example.
+CONTEXT (earlier turns, for understanding only):
+[T1] claude: Two options for the count: hardcode 291, or derive it from the records. I suggest deriving it.
+THE SLICE:
+[T2] owner: derive it, and never hardcode a count on that page again
+[T3] claude: Done, the count is derived; pushed as a1b2c3.
+[T4] owner: how many pages are left? and maybe we should cache this someday
+[T5] claude: About half. Want me to add the cache now?
+[T6] owner: no
+[T7] owner: hmm, fine, but keep it small I guess
+Answer:
+{"items":[{"turn":2,"outcome":"approved","statement":"Owner chose deriving the tile count from the records over hardcoding it","scope":"the tile count on that page","quote":"derive it","context_turn":1,"certainty":"clear","reason":null},{"turn":2,"outcome":"standing","statement":"Never hardcode a count on that page","scope":"that page, all future work","quote":"never hardcode a count on that page again","context_turn":1,"certainty":"clear","reason":null},{"turn":6,"outcome":"rejected","statement":"Owner declined adding the cache now","scope":"the cache offer in T5","quote":"no","context_turn":5,"certainty":"clear","reason":null},{"turn":7,"outcome":"approved","statement":"Owner may have reversed and allowed a small cache, right after declining it","scope":"the cache offer in T5","quote":"fine, but keep it small I guess","context_turn":5,"certainty":"unclear","reason":null}]}
+
+Answer with ONE JSON object in exactly that shape and nothing else. If THE SLICE holds no owner decision, answer exactly {"none":true}.
