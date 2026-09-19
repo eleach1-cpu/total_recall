@@ -147,10 +147,83 @@ start and require a search before editing. They are a reminder to look, not proo
 AI read carefully, and they only work in a client that actually runs them. Importing new sessions
 keeps the memory current; it cannot recall conversations that have not reached the store yet.
 
+## Take your memory to another computer
+
+**Your new laptop does not have to start from zero.** You can carry a private snapshot of
+your project's Total Recall memory to it, connect your AI, and search the earlier conversations,
+decisions and lessons without copying the original conversation files.
+
+The owner confirmed a desktop-to-laptop transfer worked on September 19, 2026. This is a
+**manual, one-way snapshot**, not automatic sync, a database merge or a built-in export wizard.
+It carries the history already imported into Total Recall, not your entire AI account.
+
+### On the original computer
+
+Ask your AI:
+
+> “Prepare a private Total Recall memory snapshot for my other computer. Leave the original
+> memory unchanged. Include the stored history and any existing meaning-search indexes,
+> a portable configuration, file checksums and instructions for connecting a read-only copy.
+> Do not include credentials, call an AI provider or rebuild the indexes.”
+
+Your AI should prepare the package this way:
+
+1. Use SQLite's backup API or `VACUUM INTO` to make a consistent copy of the configured
+   `store` database. Do not just copy a live `.sqlite` file: recent writes may still be in
+   its WAL file. Take consistent backups of any included index databases too, with indexing
+   paused while the snapshot is prepared.
+2. Include the configured full-text search index and any provider-specific indexes you want
+   to keep. Preserve their filenames and record which provider/model each uses. Indexes are
+   optional for word/date search; copying them does not fill existing coverage gaps.
+3. Create a portable `total_recall.json` with the original project name and timezone, relative
+   paths to the copied databases, `"transcriptSources": []` and `"sources": {}`. Leave out old
+   transcript paths, secrets and automatic import hooks. Set the AI connection's Node, tool
+   and project-root paths for the receiving computer, not the original machine.
+4. Package the backup files, configuration, SHA-256 checksums and a short instruction file
+   into a ZIP. Record the snapshot date and known coverage gaps. Do not include live WAL/SHM
+   files alongside these completed backups. Transfer privately, such as by USB, **never GitHub**.
+
+### On the new computer
+
+Install Total Recall using the [setup guide](docs/SETUP.md), then ask your AI:
+
+> “Connect this memory snapshot in its own new folder. Verify its checksums, keep its databases
+> read-only, and leave my existing projects and memories untouched. Use word/date search first.
+> Find an earlier conversation about a topic I choose and show me the original words, speaker
+> and date. Do not import, merge, embed or change Total Recall's source code.”
+
+Extract into a new folder, not over an existing memory. Connect your AI to that folder's
+configuration and start a fresh session. For Codex, the tested connection exposed only
+`recall_recall`, `recall_search`, `recall_read`, `recall_inventory` and `recall_brief`, with
+`recall_decide` excluded and no import hooks. See [Codex connection setup](docs/CODEX.md).
+Request words-only retrieval for the first test so no embedding service is needed.
+
+**What comes with it:** imported text, dates, speakers, decisions and source references.
+The original computer's file paths remain as provenance; Read can open the stored text without
+those files. Project code, attachments, images and videos do not travel with the database.
+The archive can contain sensitive history even after credential scrubbing. Keep it private.
+
+**What happens next:** the snapshot stays at its transfer date. Future conversations on either
+computer do not automatically appear on the other. To start recording new laptop sessions,
+configure a separate writable project and its local conversation sources using the setup guide.
+Do not overwrite either computer's live database to simulate syncing.
+
+Existing meaning indexes need their matching model/provider to answer meaning-based queries.
+CPU-only Ollama indexing and meaning search also passed a separate small laptop test
+([measurements below](#cpu-only-laptop-test)). Test new conversations in the writable laptop
+project using the full-text `index` workflow, leaving the transferred snapshot unchanged.
+No model or paid API is needed just to transfer memory or search its words and dates.
+
 ## Does maintenance use AI?
+
+**Starting fresh? You do not need distillation.** Your AI records decisions during your
+sessions; ingest keeps the conversations, and optional indexing adds meaning search.
 
 - **`ingest`: no AI.** Reads new or changed conversation files and project notes into the local
   database. Their words and dates become searchable without a model.
+- **`distill`: optional AI analysis of older history.** Reads already imported conversations
+  to extract possible decisions and rules. It is not the import step. Older conversations
+  remain searchable without distillation, and new in-session decisions do not need it.
 - **`embed`: uses AI for meaning search.** Builds the older search index, which may cover only
   the first 6,000 characters of each record.
 - **`index`: uses AI for full-text meaning search.** Splits long records into overlapping passages
@@ -199,6 +272,46 @@ The session-start import has a short time limit and cannot include conversation 
 after it runs. It does **not** embed or build the full-text index. Save the handoff before the
 end-of-day import; new or changed records also need indexing to keep full-text meaning search
 current. **Installing the code does not build that index.** See [maintenance](docs/MAINTENANCE.md).
+
+### Distillation without a GPU
+
+If you choose to extract decisions from older conversations, `distill` can use **local Ollama
+on the CPU** or the **Anthropic API**. Local distillation needs enough system RAM for the
+chosen text-generation model and can be much slower than embedding with `nomic-embed-text`.
+The laptop results below do not measure distillation speed or its memory requirements.
+
+The Anthropic option needs no local AI model or GPU, but sends selected conversation text
+to Anthropic and incurs API charges. Choose the model and spending cap before running it.
+Neither option is required for a fresh install, and a transferred memory does not need its
+existing extracted decisions distilled again. See [optional backlog distillation](docs/MAINTENANCE.md#older-conversations-and-optional-distillation).
+
+### CPU-only laptop test
+
+**A dedicated GPU is not required for local meaning search.** A laptop test report dated
+September 19, 2026 recorded these results with Ollama 0.34.2 and `nomic-embed-text`
+(model ID `0a109f422b47`), on an Intel Core i7-1255U with about 15.6 GiB system RAM:
+
+| Measurement | Observed result |
+|---|---|
+| Model placement | 100% CPU; zero GPU memory reported |
+| First full-text index run | 30 records / 30 chunks in 4.22 seconds end to end |
+| Repeat run | All 30 unchanged records skipped; 1 additional record indexed |
+| Warm meaning search | 0.30 seconds median across three searches |
+| Ollama plus its worker | About 424 MiB working RAM and 491 MiB private memory |
+
+The indexing command used about another 60–68 MiB of working RAM. These are observed sample
+measurements, **not minimum hardware requirements or guaranteed peak memory**. Memory was
+sampled every 100 ms during the corrected repeat/search measurements; the first run's model
+memory measurement omitted the worker. Warm search timing does not include a cold model load.
+
+Meaning-only search recovered an original notebook-naming message without the query containing
+the chosen name. A broader paraphrase using “journal” found no match at the default cutoff.
+Only 31 of 92 eligible records were indexed, so this was a small functional and speed test,
+not a full-history benchmark or proof that every paraphrase will work.
+
+No paid API was used. The transferred desktop snapshot and tool source were unchanged.
+The CPU-only server was left running for the test, but automatic startup and maintenance were
+not enabled. Its CPU-only settings applied to that server process, not every future launch.
 
 ## Your history stays yours
 
