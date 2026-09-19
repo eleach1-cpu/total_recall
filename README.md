@@ -1,618 +1,189 @@
-# total_recall
-
-Searchable, distilled memory for Claude Code sessions, and (since schema version 2) for Codex
-sessions on the same project: one shared record, every row labelled with who said it and in which
-client. Codex setup, what is read and what never is: [docs/CODEX.md](docs/CODEX.md).
-
-Every Claude Code session starts blank. What the last session decided, rejected or left half-done
-survives only if someone wrote it down, and even then the new session has to know which file to
-open. total_recall reads the transcripts Claude Code already writes to disk, indexes every turn in
-a per-project SQLite full-text store, distils the conversation into one-line statements that carry
-**who said it, what happened to it, and the exact quote it came from**, and then forces the next
-session to look before it codes: a brief at session start, and an edit gate that stays shut until a
-recall search has run.
-
-Zero dependencies. Node 22.13 or newer. One SQLite file per project. MIT.
-
-Built on 2026-09-18 for a project with 109 sessions of transcript (3.35 GB); the first ingest took
-108 seconds and produced 86,685 searchable turns, 899 note sections and 95 standing rules.
-
----
-
-## Contents
-
-- [How it works](#how-it-works)
-- [What a session sees](#what-a-session-sees)
-- [Install](#install)
-- [Opt a project in](#opt-a-project-in)
-- [The hooks](#the-hooks)
-- [The skill](#the-skill)
-- [Commands and switches](#commands-and-switches)
-- [Configuration reference](#configuration-reference)
-- [The distill step: with and without an AI model](#the-distill-step-with-and-without-an-ai-model)
-- [What gets stored, and what never does](#what-gets-stored-and-what-never-does)
-- [Tuning the distill prompt](#tuning-the-distill-prompt)
-- [Honest limits](#honest-limits)
-- [Development](#development)
-
----
-
-## How it works
-
-Three tiers of memory live in one store, `~/.total_recall/<project>.sqlite`:
-
-| Tier | What it is | Where it comes from | Costs a model? |
-|---|---|---|---|
-| **Raw turns** | your text and Claude's text, one row per turn, plus the tool names and file paths that turn touched | Claude Code's own transcript files (`~/.claude/projects/<project>/*.jsonl`) | no |
-| **Notes** | session handoffs, memory files, a changelog, split by heading | files you name in `total_recall.json` | no |
-| **Statements** | one line each: `who` (owner or claude), `outcome` (approved, rejected, standing, completed, open, proposed, superseded), a verbatim `quote`, the ids of the turns that prove it, and the stated reason if one was given | `total_recall distill`, a local Ollama model or the Claude API reading the raw turns in 6K-token slices | **yes** |
-
-Searches read the statements and notes first (cheap, already condensed) and the raw turns on
-demand (`--deep`, or `--kind turn`). Ranking is SQLite FTS5 bm25 with the title weighted three
-times the body. A statement is stored only when its quote is found word for word in the turn it
-cites, which is what keeps the model from inventing decisions.
-
-**Standing rules never age out.** A rule the owner set a month ago ("never ship the text-only
-icon") is in every brief until it is struck, however much newer work fills the store.
-
-**Everything is idempotent.** Every row is keyed by a content hash; transcripts are read from a
-per-file byte offset, so a session-start ingest costs a fraction of a second; an edited note file
-supersedes its old sections instead of sitting beside them; a retuned distill prompt retires the
-statements the old prompt produced and re-derives them.
-
-## What a session sees
-
-At session start, the hook prints a brief into Claude's context:
-
-```
-== total_recall brief ==
-2026-09-18 RULE owner: never revert the site logo to the old text-only mark; the full logo stays at every size
-2026-09-17 RULE owner: never call a page fast from a local run; measure it on the live server first
-...
-+80 more: total_recall search --outcome standing
-2026-09-17 owner rejected: clearing the cache does not solve the problem
-2026-09-17 handoff note: Open , two pages still show the old preview image...
-Run: total_recall search "<topic>" before the first edit. --deep for the raw turns.
-```
-
-Then, the first time Claude tries to edit or write a file (or run a write-shaped shell command),
-the gate blocks it:
-
-```
-BLOCKED by total_recall: run  total_recall search "<the files or topic you are about to touch>"  first. (session 3f9a1c2e-...)
-```
-
-One search opens the gate for that session. The search itself looks like this:
-
-```
-$ total_recall search "tax math" --deep
-#87124 statement 2026-05-06 file [owner standing]
-  The old quote builder was retired in April 2026; the checkout page was rewritten to totals only.
-  quote: "never link to it, reference it, or rebuild it"
-#87364 memory 2026-07-05 file
-  tax-math-core.js is the ONE tax implementation; both calculator pages delegate to it.
-  Never re-implement tax math inline...
-
-RAW, not yet distilled:
-#1197 turn 2026-09-18 3f9a1c2e
-  user: the rounding is wrong again on the summary page...
-
-deep for #87124 statement 2026-05-06 file [owner standing]:
-  [T87120] owner: ...the exact turn the quote came from, with one neighbour each side...
-```
-
-## Install
-
-Per machine, once:
-
-```bash
-git clone https://github.com/<you>/total_recall C:/Users/<you>/total_recall
-mkdir -p ~/.claude/skills/total_recall
-cp C:/Users/<you>/total_recall/skill/SKILL.md ~/.claude/skills/total_recall/SKILL.md
-```
-
-Requirements:
-
-- **Node 22.13 or newer** (`node:sqlite` is built in and unflagged from 22.13; the tool prints one
-  experimental-feature warning on Node 22 to 24 and silences it in hooks).
-- For `distill` only: either a running [Ollama](https://ollama.com) with a pulled model
-  (`ollama pull qwen3:14b`), or an Anthropic API key in the environment. See
-  [the distill step](#the-distill-step-with-and-without-an-ai-model).
-
-Nothing is installed globally. Every command is `node <path-to-repo>/bin/total_recall.js ...`; the
-examples below write `total_recall` for short. Add an alias or a shim if you like.
-
-## Opt a project in
-
-1. Put a `total_recall.json` at the project root (the tool finds it by walking up from the
-   current directory, the way git finds `.git`):
-
-```json
-{
-  "project": "my-project",
-  "transcripts": "C:/Users/<you>/.claude/projects/C--Users-<you>-my-project",
-  "sources": {
-    "handoff": "notes/SESSION-HANDOFF-*.md",
-    "memory": "C:/Users/<you>/.claude/projects/C--Users-<you>-my-project/memory/*.md",
-    "changelog": "CHANGELOG.md"
-  }
-}
-```
-
-   `transcripts` is the folder Claude Code writes this project's `*.jsonl` files to; the folder name
-   is the project path with the separators replaced by `-`. `sources` are optional.
-
-2. Merge [`hooks/settings.snippet.json`](hooks/settings.snippet.json) into the project's
-   `.claude/settings.json`, fixing the path to this repo (see [The hooks](#the-hooks)).
-
-3. Load the history and, if you have a model, distil the recent part:
-
-```bash
-total_recall ingest --all
-total_recall distill --since 2026-09-01
-```
-
-4. Start a new Claude Code session in the project. The brief prints; the first edit is blocked until
-   a search has run.
-
-A project with no `total_recall.json` is untouched: every command says
-`no total_recall.json found above <cwd>; nothing to do` and exits 0, so the hook lines are harmless
-in a project that has not opted in.
-
-## The hooks
-
-Three hook entries, all in the project's `.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "node C:/Users/<you>/total_recall/bin/total_recall.js session-start" } ] }
-    ],
-    "PreToolUse": [
-      { "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [ { "type": "command", "command": "node C:/Users/<you>/total_recall/bin/total_recall.js gate --check" } ] },
-      { "matcher": "Bash",
-        "hooks": [ { "type": "command", "command": "node C:/Users/<you>/total_recall/bin/total_recall.js gate --check-bash" } ] }
-    ]
-  }
-}
-```
-
-| Hook | What it does |
-|---|---|
-| `SessionStart` -> `session-start` | One process that, in order: clears this session's gate marker, ingests whatever is new (seconds), prints the brief. It is one command because Claude Code runs the hooks of one event in parallel, so `ingest` and `brief` as separate lines could race. |
-| `PreToolUse Edit\|Write\|...` -> `gate --check` | Exits 2 (Claude Code's "block this call") with the message above until a `search` has run in this session. |
-| `PreToolUse Bash` -> `gate --check-bash` | Same block, only for write-shaped commands: `git commit`, `sed -i`, `tee`, `>` / `>>` into the project, `cp` / `mv` into the project, `node -e` / `python -c` that write files, `Set-Content` / `Out-File` / `Add-Content`. Reads (`git status`, `ls`, `grep`, tests) pass. |
-
-**Session identity.** The hook receives `session_id` on stdin; a `search` run from Claude's shell
-reads `CLAUDE_CODE_SESSION_ID` from its environment; they are the same uuid, so the search and the
-gate always agree and two concurrent sessions on one project cannot unlock each other. There is no
-daily fallback marker. If neither source is present, `search` says `no session id; gate not
-touched` and the gate stays shut; `gate --ack --session <id>` opens it by hand.
-
-**Paths are absolute** because Claude Code runs hooks from the project directory, not from this
-repo. Ingest runs at session start rather than session end because on Windows the shell is torn
-down before a Stop hook finishes.
-
-**Turning it off:** remove the three entries. Opening the gate for one session without a search:
-`total_recall gate --ack`.
-
-## The skill
-
-**For the owner, no switches.** Typing `/total_recall` followed by a plain sentence is enough:
-`who said X`, `what did we decide about X`, `what did I reject about X`, `what are my rules`,
-`what is still open`, `what did we do to src/x.js`, `more` (for the surrounding conversation),
-`catch me up`, `we are done for the day`. Claude maps the sentence to the switches below and shows
-the hits verbatim before saying anything. The switches exist for Claude, not for you.
-
-
-[`skill/SKILL.md`](skill/SKILL.md), copied to `~/.claude/skills/total_recall/SKILL.md`, tells
-Claude how to use the tool: search before the first edit, treat `rejected` and `STRUCK` hits as
-warnings, go `--deep` when a hit has no reason, show hits to the owner and stop on
-`/total_recall <topic> --show`, distil only when the owner asks, and what to do when no model is
-available. The gate guarantees the first look happened; the skill carries the behaviour.
-
-## Commands and switches
-
-Every command finds the project's `total_recall.json` from the current directory, opens the store
-it names, and exits 0 unless something is wrong. Dates are `YYYY-MM-DD`.
-
-### `search "<query>"`
-
-Full-text search, distilled tier first, then a short `RAW, not yet distilled` section of recent
-turns from sessions nobody has distilled or written a handoff for. Each word of the query is
-matched on its own and results are ranked by how many match (bm25); a phrase in double quotes is
-matched as a phrase. Writes this session's gate marker.
-
-| Switch | Meaning |
-|---|---|
-| `--kind k[,k]` | Which kinds to search. Default `statement,handoff,memory,compact_summary,map_section` (the distilled tier). `--kind turn` searches raw turns; `--kind all` searches everything. When `turn` is included the RAW section is not printed separately. |
-| `--who owner\|claude` | Statements made by the owner or by Claude. |
-| `--outcome o[,o]` | Statements by outcome: `approved`, `rejected`, `standing`, `completed`, `open`, `proposed`, `superseded`. |
-| `--files GLOB` | Only rows whose turn touched a matching path, e.g. `--files "src/tax-math*"`. |
-| `--session ID` | Only rows from that Claude session. Does not change which session the gate is opened for. |
-| `--since D` | Only rows dated on or after `D`. `D` is `YYYY-MM-DD`, `YYYY-MM` or `YYYY`; anything else is refused rather than compared as text. `--from` is the same switch. |
-| `--until D` | Only rows dated on or before `D`. A bare month or year covers the whole of it, so `--until 2026-08` includes 31 August. `--to` is the same switch. |
-| `--on D` | Shorthand for `--since D --until D`: one day, one month or one year. |
-| `--oldest`, `--newest` | Order hits by date instead of by relevance, for "when did we first talk about X" and "what is the latest on X". Every word of the query must then match (relevance is no longer there to push one-word hits down). Use with `--kind all` to reach raw turns. |
-| `--tools` | Include tool-only turns (a turn whose whole body is `(tool-only turn: Edit) path`). They are left out of every search by default because they bury the conversation; `--files` brings them back on its own. |
-| `--words` | Words lane only; skip the meaning lane even when the store has vectors. |
-| `--deep` | For each hit, also print the turns it cites (statements cite their evidence turns; a raw hit cites itself) with one neighbour on each side. |
-| `--limit N` | Number of distilled hits (default 12). Deep blocks are capped at 6. |
-| `--include-superseded` | Also return rows that a newer version of the same note replaced. They print `STRUCK`. |
-
-Output, one block per hit: `#<id> <kind> <date> <session-or-file> [<who> <outcome>]`, the title,
-`quote: "..."` and `reason: ...` for statements, a body snippet for notes.
-
-### `decide`, `decisions`, `unlink`: decisions recorded while the work happens
-
-The assistant that is IN the conversation records an owner decision when it is made, instead of a
-model mining it afterwards:
-
-```
-total_recall decide --client claude --outcome approved --what "Owner approved moving the rounding after the add" \
-    --scope "the invoice rounding" --quote "approved, do it" --context "I propose rounding after it"
-recorded #412: linked to T88, T89
-```
-
-- The owner's exact words are the record and are CHECKED against the ingested conversation. The
-  evidence is never typed in: it is the owner's turn the words were found in, plus the proposal that
-  turn answered. Until that turn is in the store the record is `pending` with no ids; every ingest
-  retries; if the conversation around that moment arrives and the words are not in it, the record
-  becomes `unverified` and never reaches a search or the brief.
-- `--what` and `--scope` are the assistant's READING and are printed as one (`owner said:` /
-  `reading:`). A matching quote proves the words were said, not that the reading is right.
-- Refused: a question as the quote, an approval that does not say what was approved, no scope. A
-  short "yes" / "go" needs the proposal before it. `standing` whose words do not themselves state a
-  general rule is held as UNCLEAR and never shown as a rule; `--unclear` does the same by hand.
-- `--replaces ID` links a replacement only when the new record is linked to the owner's real later
-  words and is clear; the earlier record stays, prints `REPLACED by #id`, and `unlink ID` undoes it.
-  Unclear, or `--conflicts-with ID`: both stay current and print `CONFLICT ... (owner to decide)`.
-  Only the owner strikes. The judged `link` pass never touches these.
-- `decisions [--today | --since D] [--pending] [--client c]` prints the block a handoff collects.
-  Recording the same decision twice is one record.
-- MCP: `recall_decide`, same fields. It never ingests; an unlinked record waits for the next ingest.
-
-### The owner-decision pass over the backlog (`distill --prompt decisions`)
-
-For conversations from before decisions were recorded in session. A strong reader goes over the
-ORIGINAL conversation (not over a weaker model's output), each slice preceded by the four turns
-before it so a short reply can be understood. Owner decisions only; each carries its scope, the
-proposal it answered and `certainty`; the same validator rules as `decide` apply to whatever the
-model claims (assistant turns, questions, short replies with no proposal, one-task "rules").
-
-```
-total_recall distill --all --prompt decisions --provider claude --model claude-sonnet-5 --dry --price-in <now>
-total_recall distill --session <id> --turns 123,456 --prompt decisions --provider claude --model claude-sonnet-5 \
-    --supersede-weaker --max-usd 2 --price-in <now> --price-out <now>
-```
-
-- A paid run REFUSES to start without `--max-usd` and the current `--price-in` / `--price-out`
-  (dollars per million tokens, looked up that day). It stops at the cap; a finished slice has a run
-  row (model + prompt) and is never sent again. `--dry` sends nothing and prints the workload.
-  `--turns` limits a run to the slices holding those turns (a trial).
-- `--supersede-weaker`: after a slice succeeds, what a weaker extractor said about those turns steps
-  aside (status `superseded`, still readable with `--include-superseded`, pointing at the new
-  statement on the same turn when there is one). A record made in session and anything the owner
-  struck are never overwritten and block a duplicate. No "replaced by" links are drawn by this pass.
-
-### `brief`
-
-Prints what the session-start hook prints. Two parts with two caps: every active standing rule,
-newest first (cap `brief.standingLines`, default 15, with a `+N more` pointer), then the last
-`brief.sessions` (3) sessions' statements and handoff sections, scored: +3 when the line names a
-file changed in the project's last five commits, +2 for `open`, +1 for `rejected`, +1 per day of
-recency; `open` first on ties. Total cap `brief.maxLines` (40). Empty store: one line saying so.
-
-### `ingest [selector]`
-
-Reads transcripts and note files into the store. Idempotent; run it as often as you like.
-
-| Switch | Meaning |
-|---|---|
-| *(none)* | Only what each source file has that it did not have last time: transcripts resume from their stored byte offset, note files are re-read only when their content hash changed. This is what the session-start hook runs. |
-| `--all` | Read every file from the start. Adds nothing that is already stored (content hashes), but re-establishes offsets. |
-| `--since D` | Only records dated on or after `D`. Offsets are not advanced. |
-| `--from D --to D` | Only records dated inside the range, inclusive of both days. |
-| `--session ID` | Only that session's transcript file. |
-
-What a transcript record becomes: `user` and `assistant` records only; subagent (`isSidechain`)
-records and tool results are skipped; a tool-only turn is kept when it touched a file, with the
-tool name and path recorded; compaction summaries become their own kind. Every stored body passes
-the secret scrubber first. A transcript file that shrank or whose head changed is treated as new:
-its old rows are superseded and it is re-read from zero.
-
-Note files are split at `## ` headings (the changelog at `**YYYY-MM-DD` entries). A memory file whose
-frontmatter says `type: feedback` also becomes a `standing` statement with `who: owner`, which is
-how existing owner directives reach the brief on day one with no model.
-
-Output: `ingested N turns, M file sections (S superseded, R standing rules), K skipped (already
-present), T seconds`.
-
-### `distill [selector] [--provider ollama|claude] [--model TAG]`
-
-Sends raw turns to a model in ~6K-token slices and stores the statements that pass validation.
-Selectors are the same as `ingest`, plus `--today`; with no selector, every session is considered
-(chunks already done are skipped). See [the distill step](#the-distill-step-with-and-without-an-ai-model).
-
-| Switch | Meaning |
-|---|---|
-| `--provider ollama\|claude` | Which model to use for this run. Default from `distill.provider` in the config, else `ollama`. |
-| `--model TAG` | Model tag for that provider (`qwen3:14b`, `claude-opus-5`, ...). Default from `distill.model`, else the provider's default. |
-| `--redo` | Send chunks again although they already ran. The way to win back statements an older, stricter validator dropped; statements already stored are recognised by their sha, so nothing doubles. |
-
-When the chunks are done, `distill` runs `embed` and then `link` (both below) so new statements
-are searchable by meaning and the supersession links are current. Neither can fail a distill.
-
-Per chunk: a run record is written when the model answered parseably, including a `{"none":true}`
-answer, so it is never sent again for the same model and prompt. A chunk whose reply could not be
-parsed, or that the provider refused or failed, is reported as FAILED, its raw reply is saved under
-`~/.total_recall/failed/`, nothing is stored, no run record is written (so it retries next time),
-and the run continues with the next chunk. Exit code 1 at the end if any chunk failed.
-
-Validation, per statement: the outcome must be one of the seven labels; the cited turn must be in
-the slice; the quote must be in that turn, either word for word or, for a quote of four words or
-more, with every word present in order and at most three stray words between neighbours (the model
-tidies quotes; what is stored is then the TURN's wording for that span, so the record stays
-verbatim); `who` is derived from the turn's role
-(never trusted from the model); only an owner turn can be `approved` or `standing`; an `open` item
-cannot cite a question. Dropped statements are counted with their first three reasons.
-
-Output: `distilled N sessions: A chunks sent, B already done, C statements stored, D dropped by
-validation (...), T seconds, <provider> <model>`.
-
-### `embed [--kind all|k,k]`
-
-Gives rows a vector so `search` can find them by meaning as well as by words. Needs Ollama with
-`nomic-embed-text` pulled (274 MB); nothing else does. Only rows without a vector are sent, so a
-rerun is cheap. Default kinds are the distilled tier (statements, handoffs, memory, compaction
-summaries, map sections, changelog): 1,926 rows took 35 seconds on the first real store.
-`--kind all` adds the spoken turns (tool-only turns are never embedded), about 55 rows a second.
-
-With vectors in the store, `search` runs two lanes and fuses them: the words lane (bm25) and the
-meaning lane (every eligible vector scored against the query's vector; hits under `search.minSim`
-are ignored). A hit that shares none of the query's words prints `~meaning 0.72` in its header.
-Date-ordered searches stay words-only. If Ollama does not answer, the search says
-`(meaning lane off ...)` and returns the word hits; `--words` skips the meaning lane on purpose.
-
-### `link [--dry] [--all] [--provider ollama|claude]`
-
-Redraws the supersession links between distilled statements: when a later decision replaces an
-earlier one, the earlier one stays visible but prints `REPLACED by #<id>` (only the owner strikes a statement; `STRUCK as wrong by the owner` is his).
-
-Likeness only nominates a pair; the distill model decides, shown the words actually said, once per
-pair per judge prompt (`lib/link-prompt.txt`), and the verdict is kept in `link_verdicts` and never
-bought again. Nominated shapes: a statement the model labelled `superseded` with a later one in
-the same session; an owner rejection over something approved, proposed or completed; an owner
-approval, from a later session, over something rejected; a standing rule over a standing rule.
-`--dry` asks nothing and writes nothing; `--all` prints every nominated pair with its verdict.
-
-Why a judge: on the first real store, likeness plus an approved/rejected flip drew 14 links and 13
-were wrong. With the judge and the same-session guard the same store draws none, which is correct.
-
-### `strike <id> --reason "..."` and `strike <id> --undo`
-
-The owner's correction of a statement the model got wrong (a 14B model will now and then read
-"what?" as a refusal). The statement leaves every search and the brief, stays in the store with
-the date and the reason, prints `STRUCK as wrong by the owner` under `--include-superseded`, and is
-never revived by anything automatic: the same statement derived again has the same sha, so it is
-ignored. `--undo` puts it back in force. Only statements can be struck; turns, notes and maps are
-the record itself, not a model's reading of it.
-
-### `mcp [--root DIR] [--client codex]`
-
-Serves `search` and `brief` as Model Context Protocol tools (`recall_search`, `recall_brief`) over
-stdio, so an assistant calls them as tools instead of shell commands. The tools never ingest,
-distill, strike or change what is remembered; `ingest`, `distill`, `embed` and `link` stay on the
-command line because they cost time or money. Not side-effect free: a search may ask the local
-embedding model for one query vector, and under Claude Code a successful search records that the
-session has looked. Each result also carries `structuredContent.total_recall = { tool, ok, project,
-hits }`, which is what a hook reads to know a search really happened. `--client codex` is for a
-server Codex starts: it never takes a caller from its own environment (see docs/CODEX.md).
-Register it in the project's `.mcp.json`:
-
-```json
-{ "mcpServers": { "total_recall": { "command": "node",
-    "args": ["C:/path/to/total_recall/bin/total_recall.js", "mcp", "--root", "C:/path/to/project"] } } }
-```
-
-A search through the server opens the edit gate when Claude Code's session id reaches the server
-(`CLAUDE_CODE_SESSION_ID`); when it does not, the result says so and one command-line search opens it.
-
-### `gate --arm | --check | --check-bash | --ack [--session ID]`
-
-The edit gate. `--arm` clears this session's marker (run by `session-start`); `--check` and
-`--check-bash` are the hook checks (they read the hook payload on stdin); `--ack` opens the gate
-for this session by hand, for the rare session with nothing to recall. Exit 2 means blocked.
-
-### `session-start`
-
-Hook only. `gate --arm`, then `ingest` (new only), then `brief`, in one process. The ingest is
-bounded (`ingest.startupBudgetMs`, 2 seconds): what does not fit waits at its checkpoint, the brief
-says more is waiting, and `total_recall ingest` catches up. No model is ever called from here.
-
-### `migrate`
-
-The owner's step when a new version changes the store's schema. Writes a complete copy of the
-store first (`VACUUM INTO`, under `backups/` beside the store; a plain file copy of a live WAL
-database is not a complete backup), then upgrades in place. Additive: no row id, FTS entry, vector,
-strike, link or run record moves. Until it has run, every other command refuses an older store
-with the sentence to run it; nothing upgrades a store as a side effect of a search or a hook. A
-store NEWER than the program is refused outright. Roll back by copying the backup over the store.
-
-### `codex-hook`
-
-Hook only, for Codex: one command for `SessionStart`, `PreToolUse` and `PostToolUse`. See
-[docs/CODEX.md](docs/CODEX.md).
-
-### `--root DIR` (any command)
-
-Work on the project at `DIR` instead of the current directory. Inside a linked git worktree the
-MAIN checkout's `total_recall.json` is used, so temporary worktrees share the project's one store.
-
-## Configuration reference
-
-`total_recall.json`, at the project root. Only `project` and `transcripts` are required.
-
-```json
-{
-  "project": "my-project",
-  "transcripts": "C:/Users/<you>/.claude/projects/<folder>",
-  "sources": {
-    "handoff":   "notes/SESSION-HANDOFF-*.md",
-    "memory":    "C:/Users/<you>/.claude/projects/<folder>/memory/*.md",
-    "changelog": "CHANGELOG.md",
-    "map_section": "docs/PROJECT-MAP*.md"
-  },
-  "distill": { "provider": "ollama", "model": null },
-  "ollama":  { "url": "http://localhost:11434", "model": "qwen3:14b", "chunkTokens": 6000 },
-  "brief":   { "sessions": 3, "maxLines": 40, "standingLines": 15 },
-  "search":  { "rawRecentDays": 7, "rawRecentLimit": 5, "minSim": 0.62 },
-  "embed":   { "model": "nomic-embed-text", "batch": 32, "queryTimeoutMs": 6000 },
-  "link":    { "minSim": 0.8, "minOverlap": 0.3 },
-  "store":   "C:/Users/<you>/.total_recall/my-project.sqlite"
-}
-```
-
-| Key | Default | Meaning |
+# Total Recall
+
+**Give your AI memory from one session to the next.**
+
+Total Recall is a session-to-session memory tool for **OpenAI's Codex and Anthropic's
+Claude Code**. It keeps your project's past conversations, research, decisions and lessons
+available so your AI can find that context and use it when the work comes up again,
+days, weeks or months later.
+
+You should not have to explain the same project three times, watch your AI repeat a failed
+approach, or send it searching for a source it already found with you last month.
+
+**The point is continuity: your next session can build on what you and your AI already learned.**
+
+[Get started](docs/SETUP.md) · [Using Recall](docs/RETRIEVAL.md) · [Codex integration](docs/CODEX.md)
+
+> **Current version:** includes Recall and the expanded search, date, project and source-reading
+> tools, tested against imported conversation history. Existing users should update their local
+> checkout, installed skills and MCP configuration, then reconnect their AI client.
+
+## “Go update the MOS Lookup Tool to add more MOS IDs.”
+
+That sounds like a new task. But suppose you and your AI have worked on it in three earlier
+sessions. You found a useful source, discovered a problem with its data, tried an approach that
+failed, and agreed on a better one.
+
+A new session may see the current code and instructions in files such as `CLAUDE.md` or
+`AGENTS.md`. Those files help, but they are not the whole conversation. Unless someone preserved
+the details, your AI may have no idea **why** you chose that source or **what went wrong** before.
+You end up paying for the same learning again, in time, repeated explanations and model usage.
+
+**With Total Recall connected, recalling that history becomes part of starting the work:**
+
+1. You ask for the MOS Lookup Tool update in a new session.
+2. Your AI searches this project's earlier work on the tool before making changes.
+3. It reads the relevant exchanges: useful sources, rejected approaches, gotchas and your decisions.
+4. It continues with that context, checking what still applies instead of starting the research over.
+
+You do not have to remember which session held the answer or explicitly say “search your memory”
+every time. The connected skill directs your AI to look back when you name a feature or file,
+before editing. Supported hooks can reinforce that with a search-before-edit checkpoint.
+
+![Earlier sessions supply sources, mistakes, fixes and decisions to Total Recall. In a new session, your request to add more MOS IDs prompts your AI to search and read that history before continuing with the lessons learned.](docs/assets/my-long-term-memory.svg)
+
+*Example: returning to a project task in a new session.*
+
+## What that memory is for
+
+- **Keep the lessons.** Recover what worked, what failed and the reason for a decision.
+- **Reuse the research.** Find the sources and resources already discussed, then check whether
+  they are still suitable.
+- **Stop making you repeat yourself.** Bring your preferences, corrections and project context
+  into the next session.
+- **Save time and potentially tokens.** Avoid repeated explanations, research and dead ends.
+  Recall has its own overhead, so savings vary by task.
+
+It works with **Codex alone, Claude Code alone, or both**. If you use both, they can draw on
+the same project history. That is an extra benefit, not the reason you need it.
+
+## How your AI gets that memory
+
+Total Recall imports your saved local conversations and project notes into a searchable record.
+The history remains available after a session ends. In a later session, your AI uses Total Recall
+to find and read the relevant parts, bringing them into its current working context.
+
+That is external long-term memory. It does not retrain the model or squeeze every old session
+into each new one. It retrieves the context the current task needs.
+
+Your Markdown notes still matter. Total Recall makes them searchable **alongside the conversations
+behind them**, rather than relying on a short handoff to capture every detail. Dates, projects,
+sessions and speakers stay attached to the words.
+
+Search can use names and phrases, dates and project filters, or optional **meaning search** to
+find related ideas even when you describe them differently. Your AI reads the original exchanges
+and reasons from them; a matching search result is only the starting point.
+
+## You can ask it directly, too
+
+Memory is useful during ordinary work, not just for history questions. But when you want to
+look something up, ask your AI naturally:
+
+> “Which source did we use for the MOS codes last time, and why?”
+>
+> “We tried this before. What went wrong?”
+>
+> “What is still open, and where did we leave off?”
+>
+> “We talked about something similar last month. Can you find it?”
+>
+> “What was the first thing I said in this project?”
+
+Your AI chooses the project, dates and search approach. You do not need to know a record ID,
+a database query or a special set of keywords. If “that project” is ambiguous, your AI should
+resolve it with you, not guess.
+
+![You ask about an earlier discussion. Total Recall finds relevant sessions and opens the actual exchanges. Your AI compares the reasons, decisions and later changes, then answers with sources and explains any gaps.](docs/assets/session-search-and-reasoning.svg)
+
+*Session search and reasoning: find the conversation, read it in context, then explain what it means.*
+
+## Four ways to use it
+
+| Operation | What it does | Example |
 |---|---|---|
-| `project` | required | Name; also the default store file name and the gate marker folder. |
-| `transcripts` | required | Folder of Claude Code `*.jsonl` transcripts for this project. Relative paths resolve from the config's folder. |
-| `sources.handoff` / `.memory` / `.changelog` | none | Glob (one `*` in the file name) of note files to ingest, by kind. |
-| `distill.provider` | `ollama` | `ollama` or `claude`. |
-| `distill.model` | provider default | Model tag override for `distill`. |
-| `ollama.url` | `http://localhost:11434` | Ollama endpoint. |
-| `ollama.model` | `qwen3:14b` | Model tag when the provider is `ollama`. |
-| `ollama.chunkTokens` | `6000` | Slice size sent to the model, in tokens (4 characters each). Sized so a 14B Q4 model fits a 16 GB GPU with its context. |
-| `brief.sessions` | `3` | How many recent sessions the brief draws from. |
-| `brief.maxLines` | `40` | Total cap on the brief. |
-| `brief.standingLines` | `15` | Cap on the standing-rules part. |
-| `search.rawRecentDays` | `7` | Window for the RAW fallback. |
-| `search.rawRecentLimit` | `5` | Cap on RAW hits. |
-| `search.minSim` | `0.62` | How close a hit found by meaning must be. Unrelated text scores about 0.50 with `nomic-embed-text`. |
-| `sources.map_section` | none | Project maps and other reference documents. Cut at `##` and `###`; a section keeps its row until its words change, so an edited map adds one row, not nine hundred. Searched by default. |
-| `embed.model` | `nomic-embed-text` | Ollama embedding model for the meaning lane. |
-| `embed.batch` | `32` | Rows per embedding request. |
-| `embed.queryTimeoutMs` | `6000` | How long a search waits for the query's vector before it falls back to words and says so. |
-| `link.minSim` / `.minOverlap` | `0.8` / `0.3` | How alike two statements must be (by vector, or by shared title words when either has no vector) to be NOMINATED for the judge. |
-| `store` | `~/.total_recall/<project>.sqlite` | Store file. |
-| `transcriptSources` | none | Instead of `transcripts`: a list of `{ "client": "claude"\|"codex", "path": DIR, "recursive": bool }`. `transcripts` alone still means one Claude folder; giving both is refused. `client` is who HELD the conversation; `distill.provider` is the model that READS it. |
-| `sources.*` | none | Each note source is one glob or a list of globs (a Claude handoff pattern beside a Codex one); a file two patterns match is read once. |
-| `projectRoots` | the config's folder | Folders that ARE this project. A Codex session belongs here when its recorded working directory is one of them, inside one, or a live git worktree of one. |
-| `projectRepos` | none | Git remote URLs of this project. A Codex session that recorded one of them belongs here even if its worktree folder is gone. |
-| `historicalRoots` | none | Folders that USED to be this project's worktrees; `*` stands for one path segment. |
-| `includeSessions` | none | Codex thread ids the owner chooses to include although nothing else binds them. |
-| `brief.maxChars` | `8000` | Size cap on the brief, about 2,000 tokens; the brief is injected into a session's context. |
-| `ingest.maxLineMB` | `16` | A single JSONL record larger than this is streamed past, never buffered, and counted. |
-| `ingest.startupBudgetMs` | `2000` | How long a session-start hook may spend ingesting. |
+| **Recall** | Gathers and reads past context for work or a question. | “What should we remember before updating this?” |
+| **Find** | Locates records by words, meaning, dates or filters. | “Find what I told Codex in August.” |
+| **Read** | Opens an original message, its surrounding exchange or a session. | “Show me what I was answering.” |
+| **Inspect Coverage** | Shows which projects, sessions and history are available. | “How far back does this record go?” |
 
-Environment: `CLAUDE_CODE_SESSION_ID` (set by Claude Code in its shell; used for the gate),
-`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` (the `claude` provider), `TOTAL_RECALL_HOME`
-(overrides `~/.total_recall`, used by the tests).
+Dates work without a keyword. Projects and speakers are separate filters. Long records and
+result lists have continuation, so the answer does not have to end at a short excerpt.
 
-## The distill step: with and without an AI model
+The [retrieval guide](docs/RETRIEVAL.md) covers direct commands, earliest/latest queries,
+phrases, wildcards, project aliases and continuation.
 
-`distill` is the only command that needs a LANGUAGE model, and the only one that can cost money.
-Two more things call a model, both local and free by default: `search` asks the embedding model
-for one query vector (it falls back to words, and says so, when Ollama does not answer), and `link`
-asks the distill model to judge nominated pairs (through the `claude` provider that is paid).
-`distill` runs `embed` and then `link` when it finishes, bounded to what that run produced and
-counted in its summary line. Two providers:
+## Remember decisions while they happen
 
-**Ollama (default, local, free).** Install Ollama, `ollama pull qwen3:14b` (or another tag, set in
-`ollama.model`), keep it running. On an RTX 5070 Ti (16 GB) the 14B model at Q4 handles a 6K-token
-slice in roughly three minutes; a week of daily sessions is around 30 slices. The prompt asks for
-JSON (`format: "json"`), temperature 0, thinking off.
+With decision capture connected, new decisions become part of that memory as you work.
 
-**The Claude API.** Set `distill.provider` to `claude` (or pass `--provider claude`) and put
-`ANTHROPIC_API_KEY` in the environment (or `ANTHROPIC_AUTH_TOKEN` after `ant auth login`). Default
-model `claude-opus-5`; override with `distill.model` or `--model`. Each slice is one non-streaming
-request of about 7K input tokens and under 2K output, so a week of sessions costs on the order of a
-few dollars at current list prices. Requests carry the server-side refusal fallback
-(`fallbacks: "default"`), so a policy decline reroutes to another model instead of failing the
-chunk; a response that still ends in `refusal` is a FAILED chunk like any other. Calls go over raw
-HTTP with Node's built-in `fetch` because this repo carries no npm dependencies.
+When you clearly approve, reject or change something, your AI will record the decision
+with your exact words and the proposal you were answering. New work does not require a separate
+model to re-read the entire session afterward.
 
-**Without any model** the tool still does most of its job:
+**The original conversation remains the authority. Neither AI gets to silently rewrite your history.**
 
-- `ingest`, `search`, `brief`, the gate and the hooks all work.
-- `search` returns raw turns (`--kind turn`, `--kind all`) and always shows recent undistilled
-  sessions under `RAW, not yet distilled`.
-- Handoffs, memory files and the changelog are already distilled by their authors and are searched
-  by default.
-- The brief's standing rules come from `feedback`-type memory files, no model involved.
+An ambiguous “go” stays pending if the tool cannot identify one matching exchange. A question
+is not an approval. A summary is not proof that you agreed. A matching quote proves the words
+were present, not that your AI understood them correctly.
 
-What you do not get is the `statement` tier: `--outcome rejected|open|approved` filters return
-nothing, `--who` finds nothing, and searches answer with conversation instead of one-line
-decisions. Run `distill` later, with either provider, and the same history fills in.
+Earlier decisions are not erased because a later one sounds similar. In-session replacements
+need explicit owner confirmation; unresolved conflicts stay visible. Older model-generated links
+still need checking against the conversation. Only the owner can strike a recorded decision as
+wrong. See [decision capture and maintenance](docs/MAINTENANCE.md).
 
-## What gets stored, and what never does
+## Start small
 
-Stored: your text and Claude's text per turn; the tool names and file paths a turn touched;
-compaction summaries; note-file sections; statements with their quotes and evidence ids.
+You need **Node.js 22.13 or newer**, saved local conversations and a project configuration.
+The tool has **no npm dependencies**. You can begin with word and date searches; a model is
+not required to import or read the record.
 
-Never stored: tool output (the results of Bash, Read, Grep and the rest, which are most of a
-transcript's bytes and the place secrets and data rows live); subagent traffic; the inputs of tool
-calls beyond a path.
+1. Get the tool and tell it where this project’s conversations are saved.
+2. Import the history you want available.
+3. Connect Claude Code, Codex or both, and try a question you already know the answer to.
+4. Add meaning search if it helps. Backlog distillation is optional, not a setup requirement.
 
-Scrubbed before storage: `sk-...`, `ghp_...`, `xox[abp]-...`, `AKIA...` keys, `Bearer` tokens,
-long hex or base64 runs near the words token, key, secret or password, and any `X_KEY=` /
-`X_SECRET=` / `X_TOKEN=` / `PASSWORD=` line. The replacement is `[scrubbed]`; the row is kept.
+The [setup guide](docs/SETUP.md) walks through this. Hooks can also provide a brief at session
+start and require a search before editing. They are a reminder to look, not proof that the
+AI read carefully, and they only work in a client that actually runs them. Importing new sessions
+keeps the memory current; it cannot recall conversations that have not reached the store yet.
 
-The store never leaves your machine unless you run `distill --provider claude`, which sends the
-raw turns of the chunks it distils to the Anthropic API.
+## Your history stays yours
 
-## Tuning the distill prompt
+The database is local by default. Words-only searches, date-only queries and source reads do not call an
+AI provider. Optional meaning search uses the configured embedding service, normally local Ollama.
+An optional Anthropic backlog run sends the selected conversation text to that API and incurs
+its charges. It must be chosen separately.
 
-The prompt is [`lib/distill-prompt.txt`](lib/distill-prompt.txt). Its sha is part of every run
-record, so editing it re-runs every chunk and retires the statements the old prompt produced.
-[`scripts/eval-prompt.js`](scripts/eval-prompt.js) scores a prompt against the gold set in
-[`tests/prompt-eval/gold.json`](tests/prompt-eval/gold.json) (seven short slices with the
-outcomes that must and must not appear) using the live model:
+There is another important boundary: **when your AI receives recalled text, that text
+enters its current conversation context** and is subject to its provider's handling.
+“Local database” does not mean “nothing ever reaches a model.”
 
-```bash
-node scripts/eval-prompt.js                              # the shipped prompt, Ollama
-node scripts/eval-prompt.js --prompt candidate.txt       # a candidate
-node scripts/eval-prompt.js --provider claude            # the Claude API
-```
+Known credential patterns are scrubbed, and tool outputs are excluded. Scrubbing is not a
+guarantee that all sensitive information is removed. Keep the database, backups and any exported
+recall results out of public repositories.
 
-The shipped prompt scores 13 of 13 gold labels with no forbidden labels on `qwen3:14b`. Seven
-rounds got it there from 11 of 15; the record is in `docs/superpowers/plans/`.
+## What it cannot promise
 
-## Honest limits
+- **History that was never imported.** This reads configured local Claude Code and Codex records,
+  not every conversation in your ChatGPT or Claude account. “Earliest found” is not automatically
+  “the first thing you ever said.”
+- **Perfect interpretation.** Extracted decisions and semantic matches can be wrong. The original
+  exchange, provenance and coverage warnings matter.
+- **Unlimited context in one answer.** Recall uses a bounded evidence packet. More text remains
+  available through Read and Find; your AI must follow those links when needed.
+- **Guaranteed recall or obedience.** Your AI still has to use the tools and understand what it
+  reads. An edit gate can require a search, not guarantee that every lesson is found. Old approval
+  is history, not fresh permission to spend, publish or deploy.
 
-- The gate is a checkpoint, not obedience: any search opens it, and the Bash write heuristic will
-  miss shapes it does not know.
-- Without `embed`, ranking is bm25 only and a paraphrase can miss; try two searches. With it, the
-  meaning lane's floor (`search.minSim`, 0.62) sits close to the noise: unrelated text scores about
-  0.50 and loosely related text 0.60, so a `~meaning` hit near the floor deserves a second look.
-- Supersession links depend on a 14B judge. It is shown the conversation, asked once, and guarded
-  against the one shape it got wrong, but a missed reversal leaves both statements standing with
-  their dates, exactly as before linking existed.
-- A local 14B model mislabels sometimes; the validators catch the structural mistakes (who, quote,
-  question-as-open) but not every judgement call. A pasted 18K-character shell log in one turn can
-  make the model's JSON unparseable; that chunk is reported and skipped.
-- The quote rule still drops a quote the model rewrote rather than tidied. Statements dropped
-  before the fuzzy match existed come back only with `distill --redo` over those sessions.
-- Windows paths, Windows hooks, Windows testing. It should run anywhere Node 22.13 does, but only
-  Windows has been exercised.
+## For contributors
 
-## Development
+Run `npm test` from this repository. The tests use synthetic records and stubbed providers;
+they do not require a GPU or paid API. Prompt evaluations are separate model-calling jobs.
 
-```bash
-npm test                       # node --test, 44 tests, no GPU or network needed
-node scripts/eval-prompt.js    # prompt eval, needs a model
-```
+The CLI and MCP tools share the retrieval code in [`lib/recall.js`](lib/recall.js).
+Decision capture lives in [`lib/decide.js`](lib/decide.js). Preserve original messages, source
+identities and owner corrections when changing either.
 
-Design spec: [`docs/superpowers/specs/2026-09-18-total-recall-design.md`](docs/superpowers/specs/2026-09-18-total-recall-design.md).
-Implementation plan with execution notes: [`docs/superpowers/plans/2026-09-18-total-recall.md`](docs/superpowers/plans/2026-09-18-total-recall.md).
-
-Layout: `bin/total_recall.js` dispatches to one module per command in `lib/`; `lib/store.js` owns
-the schema and every query; `tests/` is `node:test` with a synthetic transcript fixture and stub
-HTTP servers for both providers.
-
-Phase 2, built 2026-09-18: the meaning lane (`embed`, `lib/embed.js`); project maps as the
-`map_section` kind (a `sources` entry, cut at `##` and `###`, one row per section whose words
-changed); judged supersession links (`link`, `lib/link.js`); the MCP server (`mcp`, `lib/mcp.js`);
-the fuzzy quote match and `distill --redo`. Tests for all five are in `tests/phase2.test.js`.
+[Setup](docs/SETUP.md) · [Retrieval reference](docs/RETRIEVAL.md) ·
+[Decision capture & maintenance](docs/MAINTENANCE.md) · [Codex details](docs/CODEX.md) ·
+[MIT license](LICENSE)

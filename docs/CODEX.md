@@ -1,10 +1,13 @@
 # total_recall and Codex
 
-One project, one store, two assistants. total_recall reads the conversation files Codex already
-writes (`~/.codex/sessions` and `~/.codex/archived_sessions`) beside Claude Code's, keeps the
-speakers straight (`owner`, `claude`, `codex`), and gives either assistant the same search and the
-same brief. It adds no provider: the model that distils the record is still `distill.provider`
-(local Ollama by default). No OpenAI key is involved and nothing is uploaded.
+Give Codex project memory it can use across sessions. Total Recall reads the conversation files
+Codex already writes (`~/.codex/sessions` and `~/.codex/archived_sessions`) so your AI can recover
+earlier research, decisions and lessons before continuing the work. Claude Code's history can be
+included too; using both tools is optional. Speakers stay labelled (`owner`, `claude`, `codex`).
+
+Importing local Codex files requires no OpenAI API key and uploads nothing. Optional distillation
+uses `distill.provider` (local Ollama by default). Recalled text enters your AI's conversation context;
+optional paid distillation also sends selected text to its configured provider.
 
 Every path and id below is an example.
 
@@ -35,7 +38,8 @@ gone and that recorded no git remote is reported as `unresolved` and skipped, ne
 Do not point the `memory` source at Codex's generated memories: a `feedback` memory file becomes
 an owner standing rule, and a machine-written summary is not something the owner said.
 
-Then, once (it takes a backup first): `total_recall migrate`, and `total_recall ingest`.
+For an existing older store, run the explicit `total_recall migrate` step (it takes a backup
+first) before `total_recall ingest`. A new project can begin with `ingest`.
 The first ingest of a large archive takes minutes and says what it saw:
 
 ```
@@ -69,7 +73,7 @@ an edit touched is kept, from the structured `FileChange` record only, as a tool
 before anything is stored.
 
 Kept searchable but NEVER turned into a decision (`origin: reference`, printed as
-`[owner, reference]` or `[codex, reference]`): an assistant message in a phase this parser has not
+`[owner, reference]` or `[codex, reference]`): an AI message in a phase this parser has not
 seen; history a fork inherited when the parent thread's own file is not available; and the OPENING
 prompt of a thread an agent created (`thread_source: agent_created_thread`), because nobody can
 show the owner typed it. That is one message: the conversation is kept, and everything the owner
@@ -95,18 +99,18 @@ Limits worth knowing: a document the owner PASTES into a message is part of that
 as with Claude; nothing structural marks it as a quotation. A conversation's session key is
 `codex:<thread id>`; Claude's stay bare, as they always were.
 
-## 3. Search, from either assistant
+## 3. Search, from either AI
 
 ```
 total_recall search "ledger export" --client codex            only Codex conversations
 total_recall search "ledger export" --client codex --who owner   what I told Codex
-total_recall search "ledger export" --who assistant           what either assistant said
+total_recall search "ledger export" --who assistant           what either AI said
 total_recall search "x" --session codex:01aa0000              one conversation (or claude:<id>)
 ```
 
 `--client` leaves file notes (handoffs, memory, maps) out, because no client wrote them. Every hit
-prints its date, its speaker and its `#id`; `--deep` adds the full conversation key and the file
-and byte the evidence came from. The RAW block and the meaning lane obey the same filters.
+prints its date, speaker, `#id` and Read handle. `--deep` supplies additional source/context handles;
+`read` opens the text and its provenance. Source and meaning results obey the same candidate filters.
 
 ## 4. Give Codex the tools (MCP)
 
@@ -116,7 +120,7 @@ Project scope, in the repository's `.codex/config.toml` (Codex asks you to trust
 [mcp_servers.total_recall]
 command = 'C:\Program Files\nodejs\node.exe'
 args = ['C:\tools\total_recall\bin\total_recall.js', 'mcp', '--client', 'codex', '--root', 'C:\work\demo-project']
-enabled_tools = ['recall_search', 'recall_brief', 'recall_decide']
+enabled_tools = ['recall_recall', 'recall_search', 'recall_read', 'recall_inventory', 'recall_brief', 'recall_decide']
 ```
 
 Do not put a server pinned to one project's `--root` in the USER-level config: every other project
@@ -133,14 +137,18 @@ handles all three events; Codex hands it the real session id on stdin.
 | `SessionStart` `compact` | print the brief again; a gate this task already opened stays open |
 | `PreToolUse` `apply_patch` | exit 2 with the reason until this task has searched |
 | `PreToolUse` `Bash` | the same, only for a command that writes into the project; reading is never gated |
-| `PostToolUse` `mcp__total_recall__recall_search` | a SUCCESSFUL search (zero hits counts; an error, a refused date, another project do not) opens this task's gate |
+| `PostToolUse` `mcp__total_recall__recall_search` or `mcp__total_recall__recall_recall` | successful Find or Recall (zero hits counts; an error, a refused date, another project do not) opens this task's gate |
 
 The gate is a workflow checkpoint, not a security boundary and not permission to do anything. It
-cannot know the assistant understood what it read, and it does not see every way a shell can
+cannot know your AI understood what it read, and it does not see every way a shell can
 write. It is keyed by project, client and session: task A cannot open task B, and Claude's search
 cannot open Codex's gate. Hooks must be reviewed and trusted in Codex (`/hooks`) before they run;
 on a build without hooks, the honest fallback is the skill's instruction to search first, plus
 `total_recall search "<topic>" --as codex --caller <session id>` to record it by hand.
+
+When upgrading, the new `recall_recall` tool needs both the MCP allowlist and the PostToolUse
+matcher in the development snippet. Do not install either without owner approval. Fixture hook
+tests are not evidence that a particular desktop build invokes them.
 
 ## 6. The skill
 

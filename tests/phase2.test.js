@@ -144,15 +144,18 @@ test('mcp: initialize, list, a search that opens the gate, a bad date refused, a
   assert.equal(init.result.protocolVersion, '2025-03-26');
   assert.deepEqual(init.result.capabilities, { tools: {} });
   assert.equal(await mcp.handle({ jsonrpc: '2.0', method: 'notifications/initialized' }, ctx), null, 'a notification is never answered');
-  assert.deepEqual((await rpc('tools/list')).result.tools.map((t) => t.name), ['recall_search', 'recall_decide', 'recall_brief']);
+  assert.deepEqual((await rpc('tools/list')).result.tools.map((t) => t.name), ['recall_recall', 'recall_search', 'recall_decide', 'recall_brief', 'recall_read', 'recall_inventory']);
   assert.equal(gate.isOpen('demo', 'sid-mcp'), false);
   const hit = await rpc('tools/call', { name: 'recall_search', arguments: { query: 'logo' } });
   assert.equal(hit.result.isError, false);
-  assert.match(hit.result.content[0].text, /\[owner standing\].*\n {2}owner said: "Never ship a text-only logo"/);
+  // Retrieval now returns source handles and structured evidence; the quote must still survive.
+  assert.equal(hit.result.structuredContent.recall.rows[0].quote, 'Never ship a text-only logo');
+  assert.equal(hit.result.structuredContent.recall.rows[0].speaker, 'owner');
+  assert.equal(hit.result.structuredContent.recall.rows[0].outcome, 'standing');
   assert.equal(gate.isOpen('demo', 'sid-mcp'), true, 'a search through the server counts as the first look');
   const bad = await rpc('tools/call', { name: 'recall_search', arguments: { query: 'logo', since: 'last week' } });
   assert.equal(bad.result.isError, true);
-  assert.match(bad.result.content[0].text, /is not a date/);
+  assert.match(bad.result.content[0].text, /invalid date/);
   assert.match((await rpc('tools/call', { name: 'recall_brief', arguments: {} })).result.content[0].text, /RULE owner: Never ship/);
   assert.equal((await rpc('resources/list')).error.code, -32601);
 });

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Give your AI memory across sessions",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [1100, 470],
+    "legend": { "mode": "hidden" }
+  },
+  "components": [
+    { "id": "past-work", "type": "frontend", "label": "Lessons from earlier work", "sublabel": "Sources, mistakes, fixes and decisions", "tag": "PAST SESSIONS", "pos": [30, 40], "size": [310, 110] },
+    { "id": "saved-project-history", "type": "database", "label": "Total Recall", "sublabel": "Saved conversations, searchable by project", "tag": "MEMORY THAT LASTS", "pos": [395, 40], "size": [310, 110] },
+    { "id": "new-mos-request", "type": "external", "label": "You: Add more MOS IDs", "sublabel": "A new request in the MOS Lookup Tool", "tag": "NEW SESSION", "pos": [30, 310], "size": [310, 110] },
+    { "id": "ai-recovers-context", "type": "backend", "label": "Your AI recalls past work", "sublabel": "Searches and reads the earlier exchanges", "tag": "BEFORE MAKING CHANGES", "pos": [395, 310], "size": [310, 110] },
+    { "id": "continue-with-lessons", "type": "frontend", "label": "Build on what you learned", "sublabel": "Reuse useful sources. Avoid known pitfalls.", "tag": "CONTINUE WITH CONTEXT", "pos": [760, 310], "size": [310, 110] }
+  ],
+  "connections": [
+    { "id": "import-past-work", "from": "past-work", "to": "saved-project-history" },
+    { "id": "recover-past-context", "from": "saved-project-history", "to": "ai-recovers-context", "label": "Earlier lessons reach the new session", "labelAt": [550, 230], "variant": "emphasis" },
+    { "id": "request-triggers-recall", "from": "new-mos-request", "to": "ai-recovers-context" },
+    { "id": "apply-recovered-lessons", "from": "ai-recovers-context", "to": "continue-with-lessons", "variant": "emphasis" }
+  ]
+}

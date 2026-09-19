@@ -1,0 +1,141 @@
+# Set up Total Recall
+
+[Back to the overview](../README.md)
+
+This guide describes the current version, including the Recall operation. Installing it,
+importing private history and enabling hooks are deliberate steps. An existing installation
+can stay untouched while you review the code.
+
+## 1. Get the tool
+
+Use Node.js 22.13 or newer. Clone the repository you have access to, or use your existing checkout.
+Replace `YOUR_REPOSITORY_URL` with the clone address from the repository's **Code** button:
+
+```sh
+git clone YOUR_REPOSITORY_URL total_recall
+cd total_recall
+node bin/total_recall.js --help
+```
+
+Existing installations do not update automatically. Update your checkout, installed skills and
+MCP configuration together. No `npm install` or global package install is needed.
+
+Here, `/path/to/total_recall` means the tool checkout; `/path/to/project` means the project whose
+history you want to remember. On Windows, substitute your actual `C:/...` paths.
+
+## 2. Configure a project
+
+Create `total_recall.json` in the project's root. Use actual paths, not these placeholders.
+You may include Claude Code, Codex or both:
+
+```json
+{
+  "project": "my-project",
+  "projectAliases": ["My Project"],
+  "timezone": "America/New_York",
+  "transcriptSources": [
+    { "client": "claude", "path": "C:/Users/example/.claude/projects/ACTUAL-PROJECT-FOLDER" },
+    { "client": "codex", "path": "C:/Users/example/.codex/sessions" },
+    { "client": "codex", "path": "C:/Users/example/.codex/archived_sessions" }
+  ],
+  "sources": {
+    "handoff": ["notes/CLAUDE-SESSION-HANDOFF-*.md", "notes/CODEX-SESSION-HANDOFF-*.md"],
+    "changelog": "CHANGELOG.md"
+  }
+}
+```
+
+Remove unused sources. Claude's source must be the actual transcript folder for this project,
+not the directory containing every project. Codex shares its session directories across projects;
+Total Recall uses recorded working-directory/repository information to decide membership, not
+words inside the conversation. Unresolved membership is reported rather than guessed.
+
+For old worktrees and explicit bindings, see [Codex source binding](CODEX.md#1-tell-the-project-where-codexs-files-are).
+For named project selection, see [project registration](RETRIEVAL.md#project-registration).
+The older `"transcripts": "..."` shorthand still works for one Claude folder. Do not combine it
+with `transcriptSources`.
+
+The default store is `~/.total_recall/<project>.sqlite`. A `store` path overrides it. Relative
+paths resolve from the config folder. Linked Git worktrees use the main checkout's config.
+Keep private configs and stores out of public commits.
+
+## 3. Import and check
+
+Run from the configured project, or pass `--root` explicitly:
+
+```sh
+node /path/to/total_recall/bin/total_recall.js ingest --root /path/to/project
+node /path/to/total_recall/bin/total_recall.js inspect-coverage --root /path/to/project
+node /path/to/total_recall/bin/total_recall.js find --root /path/to/project --who owner --oldest --limit 1 --words
+```
+
+Importing writes the local store. The first pass may take time; later passes use recorded
+checkpoints. Reads never create or migrate a database. If an older store needs migration, see
+[maintenance](MAINTENANCE.md#upgrades-and-backups) first.
+
+Try a question you know the answer to. Open the record and check its project, speaker and date.
+A successful import is not proof that every account conversation is available.
+
+## 4. Connect your AI
+
+### Claude Code
+
+Copy [`skill/SKILL.md`](../skill/SKILL.md) into your Claude skill directory as
+`total_recall/SKILL.md`. Merge this server entry into the project's `.mcp.json`, preserving
+other entries and replacing both paths:
+
+```json
+{
+  "mcpServers": {
+    "total_recall": {
+      "command": "node",
+      "args": ["C:/tools/total_recall/bin/total_recall.js", "mcp", "--root", "C:/work/my-project"]
+    }
+  }
+}
+```
+
+### Codex
+
+Use the [Codex integration guide](CODEX.md#4-give-codex-the-tools-mcp) for the project-scoped MCP
+entry, tool allowlist and Codex skill. The development allowlist includes `recall_recall`.
+Do not pin one project's server in a user-wide config that other projects would inherit.
+
+After connecting or restarting your client, check that it can list and call Recall, Find, Read
+and Inventory. The CLI is also usable without MCP.
+
+### Optional hooks
+
+Hooks add a startup brief and search-before-edit checkpoint. They are not required to query
+history manually. Review and merge the appropriate template; do not replace an existing config:
+
+- [Claude hook entries](../hooks/settings.snippet.json) for `.claude/settings.json`.
+- [Codex hook entries](../hooks/codex-hooks.snippet.json), explained in [Codex hooks](CODEX.md#5-brief-at-start-search-before-the-first-edit-hooks).
+
+Use absolute tool paths. Startup performs a bounded import and prints a brief; it does not run a
+distillation model. The gate is keyed to the real calling project/client/session. A lookup for
+another project does not unlock this one. Verify hook execution on your client; a template file
+alone does not prove it runs. To disable it, remove only the entries you added. Stored history
+is not deleted.
+
+## 5. Optional meaning search
+
+You can stop at words and dates. For meaning search, configure a local Ollama embedding model
+(default `nomic-embed-text`) and keep that service available. Creating its index uses local compute:
+
+```sh
+node /path/to/total_recall/bin/total_recall.js index --root /path/to/project --dry
+node /path/to/total_recall/bin/total_recall.js index --root /path/to/project --limit 100
+```
+
+The dry run does not call a model or write files. The real run writes a derived sidecar and can
+be resumed with the same command. It does not rewrite the original record. Read
+[full-text concept coverage](RETRIEVAL.md#full-text-concept-coverage) before a large indexing job.
+An unavailable embedding service produces an explicit words-only fallback. `--words` skips it.
+
+## Where to change settings
+
+Use the smallest config you need. Current defaults are in [`lib/config.js`](../lib/config.js).
+The retrieval guide covers project aliases/registration, dates, the sidecar and query timeout.
+[Codex details](CODEX.md) explain source binding and parser limits. [Maintenance](MAINTENANCE.md)
+covers decisions, backups and optional model jobs.

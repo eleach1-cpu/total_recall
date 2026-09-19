@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "From past sessions to a useful answer",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "legend": { "mode": "hidden" }
+  },
+  "lanes": [
+    { "id": "question", "label": "YOU ASK IN A NEW SESSION" },
+    { "id": "memory", "label": "TOTAL RECALL FINDS AND OPENS THE HISTORY" },
+    { "id": "reasoning", "label": "YOUR AI REASONS FROM WHAT IT READ" }
+  ],
+  "mainPath": ["ask-about-past", "find-sessions", "read-exchanges", "connect-history", "explain-with-sources"],
+  "nodes": [
+    { "id": "ask-about-past", "lane": "question", "col": 0, "type": "external", "label": "Why did we change direction?", "sublabel": "An article we discussed last month", "width": 270, "height": 76 },
+    { "id": "find-sessions", "lane": "memory", "col": 0, "type": "database", "label": "Find the relevant sessions", "sublabel": "Project, dates, words or related meaning", "width": 270, "height": 76 },
+    { "id": "read-exchanges", "lane": "memory", "col": 1, "type": "database", "label": "Read the actual exchanges", "sublabel": "Your words, the replies and nearby context", "width": 285, "height": 76 },
+    { "id": "connect-history", "lane": "reasoning", "col": 1, "type": "backend", "label": "Connect the history", "sublabel": "Compare reasons, decisions and later changes", "width": 285, "height": 76 },
+    { "id": "explain-with-sources", "lane": "reasoning", "col": 2, "type": "frontend", "label": "Answer from the record", "sublabel": "Cite the sessions. Be clear about gaps.", "width": 270, "height": 76 }
+  ],
+  "edges": [
+    { "id": "ask-to-find", "from": "ask-about-past", "to": "find-sessions", "variant": "emphasis" },
+    { "id": "find-to-read", "from": "find-sessions", "to": "read-exchanges", "fromSide": "right", "toSide": "left", "route": "straight" },
+    { "id": "read-to-reason", "from": "read-exchanges", "to": "connect-history", "variant": "emphasis" },
+    { "id": "reason-to-answer", "from": "connect-history", "to": "explain-with-sources", "variant": "emphasis" }
+  ]
+}
