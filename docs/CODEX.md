@@ -62,6 +62,18 @@ the attachment list and then `## My request for Codex:` and the request. Only th
 removed. The request is kept, as the owner's own words; the attachment list, the page address and
 the page title are not his words and are not kept.
 
+Submitted choice-button replies (`<send_user_message_question_reply>`) are read too.
+Each answer is an owner turn; its question is a separate, labelled app-context reference,
+never owner evidence. Each pair keeps the source message's date and location. Unselected
+options and widget IDs are not approvals. Unrecognised reply payloads produce a warning.
+
+When updating from the old parser, a normal incremental ingest does not revisit old file
+offsets. After a consistent backup, run `ingest --all` on the intended project to recover
+previously discarded answers. No model or embedding job is involved. Existing source IDs
+remain intact; recovered answers get their original timestamps, not the import time.
+Pending and unverified decision records are checked again against original evidence. They
+become active only when one matching exchange is found; no later workaround is backdated.
+
 Never stored as something someone said: system and developer messages, base instructions, app
 context the client inserts into a user message (`<environment_context>`, `<recommended_plugins>`,
 browser context, the AGENTS.md block, the mentioned-files list), reasoning and encrypted content, compaction
@@ -130,6 +142,37 @@ would silently search this one's history.
 
 `.codex/hooks.json` in the repository (template: `hooks/codex-hooks.snippet.json`). One command
 handles all three events; Codex hands it the real session id on stdin.
+
+### Windows: use the actual hook shell
+
+The Windows command in the snippet is **PowerShell syntax**. Replace both absolute paths
+with the installed Node executable and Total Recall entry point. `commandWindows` selects
+Windows command text; it does not mean "run this in Command Prompt."
+
+For a PowerShell session, a custom memory home can be set like this (JSON string value):
+
+```json
+"commandWindows": "$env:TOTAL_RECALL_HOME = 'C:/work/demo-project/.recall'; & 'C:/Program Files/nodejs/node.exe' 'C:/tools/total_recall/bin/total_recall.js' codex-hook; exit $LASTEXITCODE"
+```
+
+Use that same home for MCP and all three hooks, or they will look for different stores/gates.
+Omit the assignment if using the normal default home. Keep the paths single-quoted; a literal
+apostrophe inside a PowerShell path must be doubled. Do not use `set "NAME=value" && ...`
+in PowerShell: that is cmd.exe syntax and can fail before Node starts. If the actual hook
+shell is cmd.exe, use a cmd-compatible command instead; do not paste the PowerShell snippet.
+Do not change the user's shell just to make a mismatched command work.
+
+Review the command in the hook's real shell with synthetic stdin, checking both stdout and
+stderr. Then review/trust the changed hook definitions in Settings > Hooks; changing their
+commands changes their trust hashes. Never edit trust records or gate markers to manufacture
+a pass. Finally use a fresh task and an owner-authorized disposable file: a pre-search edit
+must be denied, then a successful project-scoped search must allow it. A direct handler test
+does not prove the desktop invoked the hook. Check the startup brief/import there too.
+
+This shell mismatch was reproduced during a Windows laptop install on September 19, 2026.
+See the [official hook documentation](https://learn.chatgpt.com/docs/hooks).
+
+### Events and trust
 
 | Event | What happens |
 |---|---|

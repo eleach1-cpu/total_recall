@@ -4,19 +4,19 @@
       { "matcher": "startup|resume|clear|compact",
         "hooks": [ { "type": "command", "timeout": 30,
           "command": "node /path/to/total_recall/bin/total_recall.js codex-hook",
-          "commandWindows": "node C:/Users/<you>/total_recall/bin/total_recall.js codex-hook" } ] }
+          "commandWindows": "& 'C:/Program Files/nodejs/node.exe' 'C:/tools/total_recall/bin/total_recall.js' codex-hook; exit $LASTEXITCODE" } ] }
     ],
     "PreToolUse": [
       { "matcher": "apply_patch|Bash",
         "hooks": [ { "type": "command", "timeout": 10,
           "command": "node /path/to/total_recall/bin/total_recall.js codex-hook",
-          "commandWindows": "node C:/Users/<you>/total_recall/bin/total_recall.js codex-hook" } ] }
+          "commandWindows": "& 'C:/Program Files/nodejs/node.exe' 'C:/tools/total_recall/bin/total_recall.js' codex-hook; exit $LASTEXITCODE" } ] }
     ],
     "PostToolUse": [
       { "matcher": "mcp__total_recall__recall_(search|recall)",
         "hooks": [ { "type": "command", "timeout": 10,
           "command": "node /path/to/total_recall/bin/total_recall.js codex-hook",
-          "commandWindows": "node C:/Users/<you>/total_recall/bin/total_recall.js codex-hook" } ] }
+          "commandWindows": "& 'C:/Program Files/nodejs/node.exe' 'C:/tools/total_recall/bin/total_recall.js' codex-hook; exit $LASTEXITCODE" } ] }
     ]
   }
 }
