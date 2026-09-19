@@ -147,14 +147,23 @@ a rule, record it then, with the `recall_decide` tool (same fields as below, `cl
    Never guess at a decision the record can answer.
 3. Only the owner strikes a statement. When a distilled statement contradicts what the owner
    actually said, show both, say which looks wrong, and ask.
-4. Never run `distill`, `embed --kind all`, `index` or `link` on your own: they spend GPU time, and with the
-   `claude` provider, money. Find or Recall may ask the local embedding model for one query vector.
+4. Never start a first index backfill, `distill`, bulk embedding or `link` unasked. Approved
+   end-of-day incremental indexing follows rule 6. Import uses no AI; indexing uses the
+   configured embedding service, normally local Ollama, not the paid distill provider.
+   Find or Recall may ask the local embedding model for one query vector.
 5. An owner question is answered by this tool's output, never by opening the store's SQLite file
    or Codex's own session files by hand. If the tool cannot answer, say so in one line.
 6. At end of day, when the owner says so: write the project's Codex session handoff first (with the
    `## Decisions` block from `total_recall decisions --today --client codex` and the Recall ledger), then
-   `total_recall ingest` (it links any pending decision) and `total_recall embed --kind all`. Routine
-   `distill` is retired for new work: decisions are recorded in session.
+   `total_recall ingest` (it links any pending decision). For a project with its initial full-text
+   index already approved and built, run `total_recall index --all`; unchanged records are skipped.
+   This local incremental refresh is part of the requested wrap-up, not a new paid-model job.
+   If the initial index has never been built, use `index --dry` and ask before the first backfill.
+   Check `inspect-coverage --json`; report import warnings and any missing/incomplete index
+   records rather than calling the memory current. Startup's bounded import does not replace
+   this work. Legacy `embed` covers only part of long records; it is not the full-text refresh.
+   With local Ollama, indexing has no OpenAI/Anthropic API bill and does not rerun Sonnet.
+   Routine `distill` is retired for new work: decisions are recorded in session.
    The handoff carries a `## Recall ledger` section, three lines, so this tool is measured and not
    assumed useful: (1) searches run, own initiative versus owner asked; (2) hits that CHANGED the
    work, each with its `#id` and one sentence on what would have been done without it (a hit that

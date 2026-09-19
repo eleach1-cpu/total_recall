@@ -46,13 +46,33 @@ run corrections just because a model prefers one reading.
 
 ## Keeping history current
 
-`ingest` reads new or changed configured sources into the local store. Startup hooks can do a
-bounded pass; unfinished work remains at its checkpoint. A full import is a separate step and
-does not automatically create verified full-text semantic coverage.
+`ingest` uses no AI. It reads new or changed configured sources into the local store. Startup
+hooks do a short, bounded import: they can leave material waiting and cannot include conversation
+that happens afterward. They do not embed anything or replace end-of-day maintenance.
 
-`index` builds the optional full-text meaning sidecar. Use `--dry` first; the real job uses local
-compute. Legacy `embed` vectors can still be read, but may cover only the first 6,000 characters
-of a record. See the [retrieval guide](RETRIEVAL.md#full-text-concept-coverage).
+For an approved wrap-up, save the handoff first, then run:
+
+```sh
+total_recall ingest
+total_recall index --all
+total_recall inspect-coverage --json
+```
+
+The indexing step applies to projects whose initial full-text build is already approved and
+established. For a first build, use `index --dry` to size it and get approval before backfilling.
+`index --all` processes pending records, skips unchanged completed ones, and resumes partial
+work. A limited run (`--limit N`, default 100) does not necessarily finish the backlog.
+Report import warnings and missing/incomplete index records; command success alone is not
+proof that all configured history is covered.
+
+Indexing uses the configured embedding service, normally local Ollama with `nomic-embed-text`.
+With Voyage selected, routine `index --all` refuses to upload. An approved external run needs
+`--allow-remote` and a positive per-run `--max-remote-bytes`. This is an input-volume bound,
+not a dollar cap. See [Voyage maintenance and privacy](VOYAGE.md). Do not automatically add
+these flags to a routine wrap-up: external incremental uploads need their own approval.
+With local Ollama this uses computer time, not an OpenAI/Anthropic API bill. It does not rerun
+Sonnet or reinterpret decisions. Legacy `embed` may cover only the first 6,000 characters of a
+record and is not a substitute for full-text indexing. See the [retrieval guide](RETRIEVAL.md#full-text-concept-coverage).
 
 ## Older conversations and optional distillation
 

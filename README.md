@@ -147,6 +147,59 @@ start and require a search before editing. They are a reminder to look, not proo
 AI read carefully, and they only work in a client that actually runs them. Importing new sessions
 keeps the memory current; it cannot recall conversations that have not reached the store yet.
 
+## Does maintenance use AI?
+
+- **`ingest`: no AI.** Reads new or changed conversation files and project notes into the local
+  database. Their words and dates become searchable without a model.
+- **`embed`: uses AI for meaning search.** Builds the older search index, which may cover only
+  the first 6,000 characters of each record.
+- **`index`: uses AI for full-text meaning search.** Splits long records into overlapping passages
+  so the index can cover the whole text. Later runs skip unchanged, completed records.
+
+By default both embedding commands use Ollama, normally running on your own computer
+with `nomic-embed-text`. **With local Ollama, these jobs keep the processing local and incur no
+OpenAI or Anthropic API bill.** Embedding uses your computer's processing power; it does not rerun
+the Sonnet backlog pass, interpret new decisions or rewrite your conversation history.
+
+For local setup, install [Ollama](https://ollama.com/download), download the model with
+`ollama pull nomic-embed-text`, and keep Ollama running. The model download is about 274 MB;
+that is not its total running-memory requirement. A supported GPU helps, but CPU/system-RAM
+operation is possible. See [local setup and hardware checks](docs/SETUP.md#local-ollama-installation-and-hardware)
+for configuration, a connection check and how to tell where the model actually loaded.
+
+**No local embedding model or GPU? You can use Voyage instead.** Both Claude Code and Codex
+use the same project setting and local memory database. Voyage processes the text you send
+and returns the vectors used for meaning search. It needs a separate Voyage account and API
+key, not a ChatGPT or Claude subscription. Your imported conversation database stays local,
+but indexed passages and meaning-search queries go to Voyage.
+
+Voyage is optional and off by default. The default Voyage model is `voyage-4-lite` with
+1,024 dimensions; `voyage-4` and `voyage-4-large` are also supported. As checked September 19,
+2026, their standard rates are $0.02, $0.06 and $0.12 per million input tokens respectively,
+before account allowances. [Current Voyage pricing](https://docs.voyageai.com/docs/pricing).
+No local GPU or downloaded AI model is required for Voyage; Node, an internet connection and
+disk space for the local index are still needed. This is not a promise that one model finds
+your history better than another; try questions with known answers before switching.
+
+Without either embedding option, you keep word/phrase/wildcard searches, dates, projects,
+speakers, original conversations, decisions and session briefs. What you lose is the
+**meaning-based search lane**, which can find related wording without the same keywords.
+
+[Voyage setup and activation](docs/VOYAGE.md) explains credentials, privacy, bounded indexing
+and switching back. Local and Voyage indexes are separate. Installing support does not
+activate Voyage or upload existing history. Legacy `embed` remains local-only; Voyage uses
+the full-text `index` command.
+
+**When switching to Voyage, check the relevance cutoff too.** Our six-question paired trial
+found useful Voyage results that the existing Ollama cutoff would discard. The trial was mixed,
+not evidence that Voyage is universally better. Keep the working provider until known-answer
+searches succeed. [Voyage cutoff guidance](docs/VOYAGE.md#check-search-quality-before-switching).
+
+The session-start import has a short time limit and cannot include conversation that happens
+after it runs. It does **not** embed or build the full-text index. Save the handoff before the
+end-of-day import; new or changed records also need indexing to keep full-text meaning search
+current. **Installing the code does not build that index.** See [maintenance](docs/MAINTENANCE.md).
+
 ## Your history stays yours
 
 The database is local by default. Words-only searches, date-only queries and source reads do not call an

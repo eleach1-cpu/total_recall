@@ -38,7 +38,7 @@ the owner also asked to continue the work.
 | `what happened yesterday` | `search --on yesterday --kind turn --oldest` |
 | `catch me up` | `recall "Catch me up" --topic "" --intent overview` |
 | `which projects / sessions / how complete is this` | `inventory projects`, `inventory sessions`, `inventory coverage` |
-| `we are done for the day`, `wrap up`, `end of day` | write the project handoff (Decisions block + Recall ledger), then `ingest`, then `embed --kind all`, report the counts |
+| `we are done for the day`, `wrap up`, `end of day` | write the project handoff (Decisions block + Recall ledger), then `ingest`, then the approved meaning-index refresh below; report counts and warnings |
 
 Words the owner puts in quotes are searched as an exact phrase. If the question fits none of the
 rows, run `search "<the owner's words>" --kind all` and show that.
@@ -145,8 +145,13 @@ a rule, record it then:
    or read evidence show that evidence. Neither kind of history request alone authorizes coding.
 4. When the owner says the day is done (any wording): write the project's session handoff first
    (with the `## Decisions` block from `total_recall decisions --today` and the Recall ledger), then
-   run `ingest` (it links any pending decision) and `embed --kind all` (local, seconds), and report
-   the counts. Routine `distill` is retired for new work: decisions are recorded in session.
+   run `ingest` (it links any pending decision). For a project with its initial full-text index
+   already approved and built, refresh it with `index --all`; unchanged records are skipped.
+   This local incremental refresh is part of the requested wrap-up, not a new paid-model job.
+   If the initial index has never been built, use `index --dry` and ask before the first backfill.
+   Check `inspect-coverage --json`; report import warnings and any missing/incomplete index
+   records rather than calling the memory current. Startup's bounded import does not replace
+   this work. Routine `distill` is retired for new work: decisions are recorded in session.
    The handoff carries a `## Recall ledger` section, three lines, so this tool is measured and not
    assumed useful: (1) searches run, own initiative versus owner asked; (2) hits that CHANGED the
    work, each with its `#id` and one sentence on what would have been done without it (a hit that
@@ -154,9 +159,10 @@ a rule, record it then:
    Also, when they happened: (4) a recovered answer that was useful, (5) an explanation the owner
    did not have to repeat, (6) a repeated mistake that was prevented, (7) a WRONG memory that
    caused rework. "It confirmed my plan" is never "changed the work".
-5. Never start `index`, `distill`, bulk embedding or `link` unasked: they cost GPU time or API
-   money. Retrieval never creates/migrates a store. Installing/restarting the tools and indexing
-   the full history are separate owner-approved steps.
+5. Never start a first index backfill, `distill`, bulk embedding or `link` unasked. Approved
+   end-of-day incremental indexing follows rule 4. Import uses no AI; indexing uses the
+   configured embedding service, normally local Ollama, not the paid distill provider.
+   Retrieval never creates/migrates a store. Installing/restarting tools remains an owner step.
 6. `--outcome standing --who owner` lists current owner rule records without a keyword. Follow
    every `next` cursor until none remains before calling an all-rules list complete. Counts are
    stored decision records, not necessarily distinct rules. UNCLEAR standing interpretations are
@@ -173,28 +179,19 @@ a rule, record it then:
    actually said (the local model mislabels sometimes), show both, say which looks wrong, and ask;
    never run `strike` on your own judgement.
 
-## `distill` needs an AI language model; nothing else can cost money
+## Local maintenance versus paid distillation
 
-`distill` is the one command that calls a language model on the conversation. (`search` asks the
-local embedding model for one query vector, `link` asks the distill model to judge a few pairs,
-and `distill` runs both when it finishes; all local and free unless the provider is `claude`.)
-`distill` reads raw turns and writes the
-`statement` rows (who, outcome, quote, evidence). It runs through ONE of:
+`ingest` uses no AI. `index` builds full-text meaning coverage with the configured embedding
+service, normally local Ollama's `nomic-embed-text`. Legacy `embed` may cover only the first
+6,000 characters and is not the full-text maintenance command. With local Ollama, neither
+indexing nor import sends history to OpenAI/Anthropic or incurs an API bill.
 
-- **Ollama**, local and free (`distill.provider: "ollama"`, default; the model tag in
-  `ollama.model`, `qwen3:14b` by default). Needs Ollama running and the model pulled.
-- **The Claude API** (`distill.provider: "claude"` or `--provider claude`). Needs
-  `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN` from `ant auth login`) in the environment. Default
-  model `claude-opus-5`; a week of sessions costs on the order of a few dollars. Say the cost before
-  running it.
-
-If neither is available, say so in one line and do not retry. The tool still works without
-`distill`: `search` finds imported raw turns (`--kind turn` or `--kind all`) across all dates;
-handoffs, memory files and the changelog are
-already distilled text and are searched by default; the brief's standing rules come from
-`feedback`-type memory files with no model involved; the gate still enforces the first look. What is
-missing without a model is only the `statement` tier: `--outcome rejected|open|approved` filters
-return nothing and searches return conversation instead of one-line decisions.
+`distill` interprets old conversations into decision records; `link` judges possible relations.
+Those are separate model-calling jobs and can use a paid provider. Do not rerun a Sonnet backlog
+pass for routine upkeep. Any paid run needs explicit approval, current pricing and a cap.
+New decisions are captured during the session without a separate distillation model. Imported
+history and existing decision records remain searchable without running distill again.
+When meaning search is unavailable, report the word-only fallback; do not claim full coverage.
 
 ## Commands
 
@@ -207,10 +204,11 @@ return nothing and searches return conversation instead of one-line decisions.
     total_recall read ID [--before N --after N] [--project NAME] [--cursor TOKEN]
     total_recall read --session KEY [--project NAME] [--cursor TOKEN]
     total_recall inventory [projects|sessions|coverage] [--project NAME] [--cursor TOKEN]
-    total_recall index --dry        (no calls/writes; real indexing needs separate approval)
+    total_recall index --dry        (size the job; no calls/writes)
+    total_recall index --all        (approved full-text build or incremental refresh)
     total_recall ingest [--all | --since D | --from D --to D | --session ID]
     total_recall distill [--all | --since D | --from D --to D | --session ID | --today]
         [--provider ollama|claude] [--model TAG] [--redo]
-    total_recall embed [--kind all]      (vectors for the meaning lane; needs Ollama, free, seconds)
+    total_recall embed [--kind all]      (legacy partial-text vectors, not full-text indexing)
     total_recall link [--dry] [--all]    (redraw STRUCK links; a few local model calls, each asked once ever)
     total_recall gate --ack        (only when a session genuinely has nothing to recall)

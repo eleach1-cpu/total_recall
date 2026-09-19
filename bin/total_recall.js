@@ -29,7 +29,8 @@ const USAGE = `total_recall <command> [options]
            [--project NAME] [--chars N] [--limit N] [--cursor TOKEN] [--json]
   inspect-coverage [--project NAME] [--cursor TOKEN] [--json]
   inventory [projects|sessions|coverage] [--project NAME] [--cursor TOKEN] [--json] (compatibility)
-  index    [--dry] [--limit N] [--project NAME]  (explicit local chunk embedding; writes derived sidecar only)
+  index    [--dry] [--all | --limit N] [--batch N] [--project NAME]  (chunk embedding; derived sidecar only)
+           Voyage uploads additionally require --allow-remote --max-remote-bytes N
   brief
   decide   --client claude|codex --outcome approved|rejected|standing|open --what "..." --scope "..."
            --quote "<the owner's exact words>" [--context "<words from the proposal>"] [--reason "..."]

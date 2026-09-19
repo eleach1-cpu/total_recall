@@ -201,6 +201,11 @@ test('codex: an archive move adds nothing and reads nothing; an append is picked
   const grown = ingest.run(p.cfg, { mode: 'new' }, store);
   assert.equal(first.turns + grown.turns, 9, 'only the appended records are read');
   assert.equal(grown.superseded, 0, 'an append is not a rewrite');
+  fs.appendFileSync(moved, JSON.stringify({ timestamp: '2026-09-19T12:00:00Z', type: 'response_item', payload: { type: 'function_call_output', output: 'tool result only' } }) + '\n');
+  const toolTail = ingest.run(p.cfg, { mode: 'new' }, store);
+  assert.ok(toolTail.codex.bytesRead > 0);
+  assert.equal(toolTail.codex.messages, 0);
+  assert.deepEqual(toolTail.warnings, [], 'an incremental tool-only tail is not an unreadable conversation');
   store.close();
 });
 
@@ -605,10 +610,14 @@ test('mcp + codex hook: a successful search (even with zero hits) opens only the
   assert.match(o.text, /ingested 9 turns/); assert.match(o.text, /== total_recall brief ==/);
 
   o = io();
-  assert.equal(hook.handle({ hook_event_name: 'PreToolUse', tool_name: 'apply_patch', session_id: 'task-1', cwd: p.proj, tool_input: {} }, o), 2);
-  assert.match(o.errText, /BLOCKED by total_recall: call the recall_search tool/);
+  assert.equal(hook.handle({ hook_event_name: 'PreToolUse', tool_name: 'apply_patch', session_id: 'task-1', cwd: p.proj, tool_input: {} }, o), 0);
+  assert.equal(JSON.parse(o.text).hookSpecificOutput.hookEventName, 'PreToolUse');
+  assert.equal(JSON.parse(o.text).hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(JSON.parse(o.text).hookSpecificOutput.permissionDecisionReason, /BLOCKED by total_recall: call the recall_search tool/);
   assert.equal(hook.handle({ hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: 'task-1', cwd: p.proj, tool_input: { command: ['git', 'status'] } }, io()), 0, 'reading is never gated');
-  assert.equal(hook.handle({ hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: 'task-1', cwd: p.proj, tool_input: { command: 'echo x > src/a.js' } }, io()), 2);
+  o = io();
+  assert.equal(hook.handle({ hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: 'task-1', cwd: p.proj, tool_input: { command: 'echo x > src/a.js' } }, o), 0);
+  assert.equal(JSON.parse(o.text).hookSpecificOutput.permissionDecision, 'deny');
 
   const post = (sid, res) => hook.handle({ hook_event_name: 'PostToolUse', tool_name: 'mcp__total_recall__recall_search', session_id: sid, cwd: p.proj, tool_response: res }, io());
   const bad = await call('recall_search', { query: 'ledger', since: 'last week' });

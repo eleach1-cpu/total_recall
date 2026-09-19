@@ -171,11 +171,15 @@ Changed source/model/chunker invalidates only derived chunks. Removed source row
 
 ```text
 total_recall index --dry
-total_recall index --limit 100
+total_recall index --limit 100    # bounded sample
+total_recall index --all          # approved complete build or incremental refresh
 ```
 
-`--dry` makes no model calls or writes. The real command needs separate approval: it uses local
-GPU time. Repeating it skips unchanged complete records and resumes partial ones. It does not
+`--dry` counts eligible records, chunks and characters without model calls or writes. The first
+build needs approval because it uses local compute. After that, an approved wrap-up can refresh
+the index with `--all`. Requests are batched (default 32 chunks) and progress is reported while
+the job runs. Each indexing request gets its own timeout; search retains a bounded query deadline.
+Repeating the job skips unchanged complete records and resumes partial ones. It does not
 call a paid provider. `embed` remains the legacy one-vector-per-record command for compatibility;
 it is not a substitute for full-text chunk coverage. No bulk indexing happens during a search.
 
@@ -185,8 +189,12 @@ Every eligible vector is considered before chronological ordering; there is no t
 shortcut masquerading as earliest. Even complete embeddings cannot prove semantic recall is
 perfect. Say "earliest relevant among indexed candidates examined," not "first ever."
 
-Coverage lists configured sources and recorded checkpoints without source scans. A checkpoint
-does not prove a completed ingest. Missing knowledge is null/unknown, not zero. The imported
+Coverage lists configured transcript/note sources and recorded checkpoints without source scans.
+A checkpoint does not prove a completed ingest. Import receipts show the latest attempt and
+last completed scan for the current project configuration. Check `coverage_complete` and warnings,
+not only the timestamp: a completed scan can still have skipped or unresolved records. The receipt
+describes recorded file snapshots, not future appends or unconfigured sources.
+Missing knowledge is null/unknown, not zero. The imported
 Claude Code/Codex corpus is not the entirety of ChatGPT web project history.
 
 ## Review and activation

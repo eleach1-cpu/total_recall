@@ -64,7 +64,7 @@ Keep private configs and stores out of public commits.
 Run from the configured project, or pass `--root` explicitly:
 
 ```sh
-node /path/to/total_recall/bin/total_recall.js ingest --root /path/to/project
+node /path/to/total_recall/bin/total_recall.js ingest --root /path/to/project --all
 node /path/to/total_recall/bin/total_recall.js inspect-coverage --root /path/to/project
 node /path/to/total_recall/bin/total_recall.js find --root /path/to/project --who owner --oldest --limit 1 --words
 ```
@@ -120,16 +120,77 @@ is not deleted.
 
 ## 5. Optional meaning search
 
-You can stop at words and dates. For meaning search, configure a local Ollama embedding model
-(default `nomic-embed-text`) and keep that service available. Creating its index uses local compute:
+You can stop at words and dates. For an external service shared by Claude and Codex, see
+[Voyage setup](VOYAGE.md). It needs explicit activation and a separate API key, but no local GPU.
+
+### Local Ollama installation and hardware
+
+You can ask your AI: **“Set up local meaning search with Ollama, check that my computer can
+run it, and show me the index size before building it.”** These commands are for your AI or
+administrator; everyday recall still uses plain-English requests.
+
+1. Install the current [Ollama release](https://ollama.com/download) for your operating system.
+   Start the desktop app, or the Ollama service on Linux. If no service is running, `ollama serve`
+   starts one; do not start a second server if the app already owns port 11434.
+2. Download the local embedding model:
+
+   ```sh
+   ollama pull nomic-embed-text
+   ```
+
+3. Keep the existing project settings and set these fields in `total_recall.json`:
+
+   ```json
+   "ollama": { "url": "http://localhost:11434" },
+   "embed": { "provider": "ollama", "model": "nomic-embed-text", "batch": 32, "queryTimeoutMs": 6000 }
+   ```
+
+   The embedding model is separate from the larger optional decision-distillation model.
+   You do not need `qwen3:14b`, Sonnet or a chat-model download just to embed.
+4. From the tool checkout, check the connection using made-up text (no history upload):
+
+   ```sh
+   node -e "const c={ollama:{url:'http://localhost:11434'},embed:{model:'nomic-embed-text'}};require('./lib/recall-meaning').encoder(c,{},30000).then(e=>e.embed(['A gardener waters vegetables.'],'search_document')).then(v=>console.log('Embedding received:',v[0].length,'dimensions')).catch(e=>{console.error(e.message);process.exitCode=1})"
+   ollama ps
+   ```
+
+**Memory and graphics requirements:** the [model download](https://ollama.com/library/nomic-embed-text)
+is about 274 MB, not a promise that 274 MB of free graphics memory is enough. Runtime buffers,
+context length, batch size and other loaded models also use memory. On our tested installation,
+`ollama ps` reported **323 MB, 100% GPU, context 2048** on September 19, 2026. That is one
+measurement, not a tested minimum for every graphics card or workload.
+
+There is no dedicated-GPU requirement for CPU operation. System RAM must still accommodate
+Ollama, the model, the search process and the operating system. We have not established a
+universal minimum RAM amount or a fixed VRAM point where every machine falls back to RAM.
+Try a small build on your existing hardware before buying a GPU.
+
+Check [supported GPUs and drivers](https://docs.ollama.com/gpu). After the connection test,
+`ollama ps` shows **100% GPU** for fully GPU-loaded, **100% CPU** for system-memory loaded, or
+a CPU/GPU split. This is how to check actual placement rather than guess from card capacity.
+CPU execution is generally slower; a cold load or CPU-only query may need a larger
+`embed.queryTimeoutMs`. Reduce `embed.batch` if indexing runs out of memory. System-memory
+paging to disk is a separate slowdown, not the same thing as CPU offload.
+[Ollama's memory-placement explanation](https://docs.ollama.com/faq#how-can-i-tell-if-my-model-was-loaded-onto-the-gpu).
+
+Allow disk space for Ollama itself, downloaded models, your conversation database and its
+derived index. After installation/download, local embeddings need no external API or API key.
+Keep the service on localhost unless you intentionally configure a trusted remote server.
+
+### Build and refresh the local index
+
+Keep Ollama running. Creating the index uses local compute:
 
 ```sh
 node /path/to/total_recall/bin/total_recall.js index --root /path/to/project --dry
 node /path/to/total_recall/bin/total_recall.js index --root /path/to/project --limit 100
+node /path/to/total_recall/bin/total_recall.js index --root /path/to/project --all
 ```
 
-The dry run does not call a model or write files. The real run writes a derived sidecar and can
-be resumed with the same command. It does not rewrite the original record. Read
+The dry run reports the job size without a model call or file write. `--limit 100` is only a sample,
+not a complete build. After approval, `--all` finishes the pending backlog and also serves as the
+later incremental refresh: unchanged completed records are skipped. The job writes a derived
+sidecar, can resume after interruption, and does not rewrite the original record. Read
 [full-text concept coverage](RETRIEVAL.md#full-text-concept-coverage) before a large indexing job.
 An unavailable embedding service produces an explicit words-only fallback. `--words` skips it.
 

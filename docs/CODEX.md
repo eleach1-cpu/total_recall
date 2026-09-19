@@ -135,15 +135,21 @@ handles all three events; Codex hands it the real session id on stdin.
 |---|---|
 | `SessionStart` `startup\|resume\|clear` | arm this task's gate, ingest what is new for at most 2 seconds, print the brief (it enters as developer context, and opens by saying it is a dated record, not a request) |
 | `SessionStart` `compact` | print the brief again; a gate this task already opened stays open |
-| `PreToolUse` `apply_patch` | exit 2 with the reason until this task has searched |
+| `PreToolUse` `apply_patch` | return a structured deny with the reason until this task has searched |
 | `PreToolUse` `Bash` | the same, only for a command that writes into the project; reading is never gated |
 | `PostToolUse` `mcp__total_recall__recall_search` or `mcp__total_recall__recall_recall` | successful Find or Recall (zero hits counts; an error, a refused date, another project do not) opens this task's gate |
 
 The gate is a workflow checkpoint, not a security boundary and not permission to do anything. It
 cannot know your AI understood what it read, and it does not see every way a shell can
 write. It is keyed by project, client and session: task A cannot open task B, and Claude's search
-cannot open Codex's gate. Hooks must be reviewed and trusted in Codex (`/hooks`) before they run;
-on a build without hooks, the honest fallback is the skill's instruction to search first, plus
+cannot open Codex's gate. Hooks must be reviewed and trusted before they run: in the desktop app,
+use **Settings > Hooks** and **Trust** each Total Recall entry; the CLI uses `/hooks`.
+Project trust alone is not hook trust. The structured denial is important: a live desktop test
+allowed an edit after an exit-code-only refusal, but blocked the same edit with the explicit
+`hookSpecificOutput.permissionDecision: "deny"` response.
+
+On a build without hooks,
+the honest fallback is the skill's instruction to search first, plus
 `total_recall search "<topic>" --as codex --caller <session id>` to record it by hand.
 
 When upgrading, the new `recall_recall` tool needs both the MCP allowlist and the PostToolUse

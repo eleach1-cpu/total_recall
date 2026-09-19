@@ -215,7 +215,7 @@ test('interrupted chunk indexing resumes and never labels partial or stale sourc
   let calls = 0;
   const unstable = { ...fakeEncoder, async embed(texts, prefix) { if (++calls === 3) throw new Error('interrupted'); return fakeEncoder.embed(texts,prefix); } };
   let store = rd.open(p.cfg);
-  await assert.rejects(meaning.build(store, { limit: 100 }, { encoder: unstable }), /interrupted/);
+  await assert.rejects(meaning.build(store, { limit: 100, batch: 1 }, { encoder: unstable }), /interrupted/);
   assert.ok(meaning.coverage(store).missing_or_incomplete > 0);
   await meaning.build(store, { limit: 100 }, { encoder: fakeEncoder });
   store.close();
