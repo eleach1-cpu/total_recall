@@ -10,6 +10,10 @@ Labels, exactly one per item:
 
 Never output: questions (even rhetorical or angry ones), suggestions and musings ("maybe we could", "what if"), requests for information or status, the assistant's turns of any kind (proposals, acknowledgements, "Agreed", reports of finished work), pasted documents, logs, tool output, or text the owner is quoting from someone else. "what next", "continue", "ok" and "thanks" decide nothing.
 
+A request phrased as a question is a question: "could you add a directory page maybe?" is NOT a decision. Never shorten a quote so that it loses its question mark; if the sentence you are quoting from ends in "?", output nothing for it.
+
+One narrow exclusion: never output a go-ahead for a git or release operation, which is used up the moment it is carried out: commit, "commit local", push, "push it", merge, deploy, restart, or a deploy code ("push 1331", "1331"). They are spent permissions and nobody will ever need to look them up. This exclusion covers NOTHING else. A "yes", "go" or "approved" that answers a proposed fix, plan, design, page or rule IS a decision and must be output, and so is "approved, proceed with the other six pages". If a turn holds both ("approved, commit and push 1331"), output the approval of the work and leave out the push.
+
 For every item:
 - "turn": the T number of the OWNER turn in THE SLICE that holds the decision.
 - "quote": the deciding words, copied word for word from that turn, as short as still carries the decision.
@@ -29,6 +33,9 @@ THE SLICE:
 [T5] claude: About half. Want me to add the cache now?
 [T6] owner: no
 [T7] owner: hmm, fine, but keep it small I guess
+[T8] claude: The small cache is in. Shall I commit?
+[T9] owner: commit and push 1331
+[T10] owner: could you also add a stats page maybe?
 Answer:
 {"items":[{"turn":2,"outcome":"approved","statement":"Owner chose deriving the tile count from the records over hardcoding it","scope":"the tile count on that page","quote":"derive it","context_turn":1,"certainty":"clear","reason":null},{"turn":2,"outcome":"standing","statement":"Never hardcode a count on that page","scope":"that page, all future work","quote":"never hardcode a count on that page again","context_turn":1,"certainty":"clear","reason":null},{"turn":6,"outcome":"rejected","statement":"Owner declined adding the cache now","scope":"the cache offer in T5","quote":"no","context_turn":5,"certainty":"clear","reason":null},{"turn":7,"outcome":"approved","statement":"Owner may have reversed and allowed a small cache, right after declining it","scope":"the cache offer in T5","quote":"fine, but keep it small I guess","context_turn":5,"certainty":"unclear","reason":null}]}
 

@@ -213,6 +213,7 @@ test('backlog pass: a strong reader reads the conversation itself, with context;
   const weak = store.insertDoc({ project: 'demo', kind: 'statement', session_id: 'fix-session-1', source_client: 'claude', ts: ask.ts, path: 'distill:old', title: 'Owner approved the refund calculator pilot', body: 'x', who: 'owner', outcome: 'approved', evidence_ids: JSON.stringify([ask.id]), quote: 'is it still in pilot' });
   const struck = store.insertDoc({ project: 'demo', kind: 'statement', session_id: 'fix-session-1', source_client: 'claude', ts: key.ts, path: 'distill:old', title: 'Owner approved storing the key', body: 'x', who: 'owner', outcome: 'approved', evidence_ids: JSON.stringify([key.id]), quote: 'keep it private' });
   store.strike(struck.id, 'I never approved storing a key');
+  const report = store.insertDoc({ project: 'demo', kind: 'statement', session_id: 'fix-session-1', source_client: 'claude', ts: ask.ts, path: 'distill:old', title: 'Claude reported the rounding was moved after the add', body: 'x', who: 'claude', outcome: 'completed', evidence_ids: JSON.stringify([T(/^Done\. Rounding now happens/).id]), quote: 'Rounding now happens after the invoice total is added' });
   const mine = decide.record(store, p.cfg, { client: 'claude', outcome: 'approved', statement: 'Owner approved moving the rounding after the add', scope: 'the invoice rounding', quote: 'approved, do it', now: NOW });
 
   const api = await stubClaude((body) => {
@@ -256,6 +257,7 @@ test('backlog pass: a strong reader reads the conversation itself, with context;
     const drops = [capped, rest].flatMap((r) => r.dropReasons).join(' | ');
     assert.match(drops, /cited a claude turn/, 'an assistant turn is never an owner decision');
     assert.equal(store.getDoc(weak.id).superseded_by, null, 'the strong reader found no decision in that question, so nothing replaces the mislabel');
+    assert.equal(store.getDoc(report.id).status, 'active', 'an assistant\'s report is a tier the owner-decision reader never writes, so it never steps aside');
     // What the validator holds any reader to, whatever it claims.
     const ts = '2026-09-10T10:00:00.000Z';
     const slice = [{ id: 1, role: 'assistant', body: 'Shall I add a cache now?', ts }, { id: 2, role: 'user', body: 'should we cache this? maybe later. yes', ts }, { id: 3, role: 'user', body: 'remove the banner from the invoice page', ts }];
@@ -385,6 +387,34 @@ test('review 3: two decisions in one message are two records; the same decision 
     assert.deepEqual(s2.distilledStatements().map((d) => d.quote).sort(), ['Make the footer green', 'Make the header blue']);
   } finally { api.close(); if (saved === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved; }
   s2.close();
+});
+
+test('owner rule: questions are not decisions, even when the quote is cut short of its question mark; spent go-aheads are not asked for', () => {
+  const q = 'could you add an html page directory please from the json maybe?';
+  assert.equal(decide.partOfQuestion(q, 'add an html page directory please from the json'), true, 'the sentence it was cut from ends in "?"');
+  assert.equal(decide.partOfQuestion('Make the header blue. Should the footer be green?', 'Make the header blue'), false);
+  assert.equal(decide.partOfQuestion('could you add config.toml to the list?', 'add config'), true, 'a full stop inside a file name does not end the sentence');
+  assert.equal(decide.partOfQuestion('yes commit both with skip ci push', 'yes commit both'), false);
+  assert.equal(decide.partOfQuestion('do it\nwhy is that slow?', 'do it'), false, 'the next line is another sentence');
+  // The backlog reader is held to it, whatever it claims.
+  const ts = `${DAY}T10:00:00.000Z`;
+  const turns = [{ id: 1, role: 'assistant', body: 'Done: the image library is built.', ts }, { id: 2, role: 'user', body: q, ts }];
+  const v = distill.validateDecision({ turn: 2, outcome: 'approved', statement: 'Owner approved an HTML directory page', scope: 'the image library', quote: 'add an html page directory please from the json', context_turn: 1, certainty: 'clear' }, turns, []);
+  assert.equal(v.ok, false); assert.match(v.reason, /part of a question/);
+  // And so is an assistant recording in session.
+  const p = project();
+  convo(path.join(p.claudeDir, 'lib.jsonl'), 'lib', 0, [['assistant', 'Done: the image library is built.'], ['user', q]]);
+  const store = openStore(p.cfg.store);
+  ingest.run(p.cfg, { mode: 'new' }, store);
+  const r = rec(store, p.cfg, { quote: 'add an html page directory please from the json', statement: 'Owner approved an HTML directory page for the library', scope: 'the image library' });
+  assert.equal(r.status, 'pending'); assert.match(r.why, /part of a question/);
+  store.close();
+  // The reader's instructions say both rules, and its worked example shows them producing nothing.
+  const prompt = distill.promptFor('claude', 'decisions').text;
+  assert.match(prompt, /Never shorten a quote so that it loses its question mark/);
+  assert.match(prompt, /spent permissions/);
+  assert.match(prompt, /\[T9\] owner: commit and push 1331\n\[T10\] owner: could you also add a stats page maybe\?\nAnswer:/);
+  assert.ok(!/"turn":(9|10)\b/.test(prompt), 'the worked answer holds no item for the push or the question');
 });
 
 test('review 4: the spending cap is a hard cap: a request that could pass it is not sent, and the stop is reported', async () => {
