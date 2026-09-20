@@ -118,6 +118,16 @@ another project does not unlock this one. Verify hook execution on your client; 
 alone does not prove it runs. To disable it, remove only the entries you added. Stored history
 is not deleted.
 
+The Claude template re-arms the gate on every message you send (`UserPromptSubmit` runs
+`gate --arm`), so each new request needs its own search before the first edit. Without that
+entry, one search at session start leaves the gate open for the rest of the session.
+
+What the gate does not cover:
+
+- The command inside an `ssh` or `docker exec` string is not read. The whole call is treated as
+  a write, whether or not it changes anything.
+- File changes made through an MCP filesystem tool are not gated at all.
+
 ## 5. Optional meaning search
 
 You can stop at words and dates. For an external service shared by Claude and Codex, see
