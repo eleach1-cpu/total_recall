@@ -260,6 +260,32 @@ test('codex: malformed and oversized records are counted, an oversized MESSAGE i
   s2.close();
 });
 
+test('codex: a thread read the moment it opened (no reply yet) is not a format change; its first reply is read on the next pass', () => {
+  const p = project();
+  const file = path.join(p.live, cx.rolloutName(cx.THREAD));
+  const opening = cx.standardItems().slice(0, 3); // instructions, the app's environment block, world_state
+  cx.write(file, rootThread(p, { items: [{ kind: 'raw', type: 'event_msg', payload: { type: 'task_started' } }, ...opening,
+    { kind: 'raw', type: 'turn_context', payload: {} },
+    { kind: 'raw', type: 'response_item', payload: { type: 'function_call_output', id: 'fco_0', call_id: 'call_0', output: 'x' } }] }));
+  const store = openStore(p.cfg.store);
+  const r = ingest.run(p.cfg, { mode: 'new' }, store);
+  assert.equal(r.codex.messages, 0); assert.equal(r.codex.injectedOnly, 1);
+  assert.ok(!r.warnings.join(' ').includes('NOT ONE'), r.warnings.join(' | '));
+  fs.appendFileSync(file, cx.line(20, cx.at('2026-09-12', 30), 'response_item', cx.message('msg_first', 'assistant', cx.asstBlocks('Reading the ledger exporter first.'), 'commentary')) + '\n');
+  const r2 = ingest.run(p.cfg, { mode: 'new' }, store);
+  assert.equal(r2.codex.messages, 1);
+  assert.ok(!r2.warnings.join(' ').includes('NOT ONE'));
+  store.close();
+
+  // A reply this parser cannot read is still a warning.
+  const q = project();
+  cx.write(path.join(q.live, cx.rolloutName(cx.THREAD)), rootThread(q, { items: [...opening,
+    { kind: 'raw', type: 'response_item', payload: { type: 'message', id: 'msg_v9', role: 'assistant', content: [{ type: 'output_text_v9', text: 'unreadable' }] } }] }));
+  const s2 = openStore(q.cfg.store);
+  assert.match(ingest.run(q.cfg, { mode: 'new' }, s2).warnings.join(' '), /NOT ONE conversation message was recognised/);
+  s2.close();
+});
+
 test('codex: the owner\'s request survives the app\'s wrapper around it, and the wrapper never becomes his words (review fix 1)', () => {
   const p = project();
   const files = (name, heading, request, eol = '\n') => ['# Files mentioned by the user:', '', `## ${name}: C:/work/demo-project/private/${name}`, '', heading, request].join(eol);
